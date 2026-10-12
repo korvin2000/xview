@@ -1,10 +1,8 @@
 package org.delafer.xanderView.scale;
 
 import com.mortennobel.imagescaling.MultiStepRescaleOp;
-import net.sourceforge.jiu.apps.Strings;
 import org.delafer.xanderView.common.ImageSize;
 import org.delafer.xanderView.gui.config.ApplConfiguration;
-import org.delafer.xanderView.scale.deprecated.ResizeOpenCL;
 
 import java.awt.image.BufferedImage;
 import java.util.HashMap;

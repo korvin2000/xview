@@ -130,7 +130,8 @@ public class SysInfo {
 
 		if (null == dir) {
 			LazyValues ret = getAppDataDirInt();
-			for (int i = 0; i < ret.size(); i++) {
+			// candidates are numbered 1..size(); index 0 would hit the 'default' branch (= candidate 1)
+			for (int i = 1; i <= ret.size(); i++) {
 				String path = ret.get(i);
 				if (!StringUtils.isEmpty(path) && checkWritePermission(path)) {
 					dir = ret.completePath(path, appName);

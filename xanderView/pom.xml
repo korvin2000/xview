@@ -53,7 +53,16 @@
 								<transformer
 									implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
 									<mainClass>org.delafer.xanderView.gui.MainEntryPoint</mainClass>
+									<!-- vendored SWT (thirddep-j7) checks these in its containing jar -->
+									<manifestEntries>
+										<SWT-OS>win32</SWT-OS>
+										<SWT-WS>win32</SWT-WS>
+										<SWT-Arch>x86_64</SWT-Arch>
+									</manifestEntries>
 								</transformer>
+								<!-- merge META-INF/services (ImageIO SPIs) instead of first-wins -->
+								<transformer
+									implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
 							</transformers>
 							<filters>
 

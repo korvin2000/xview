@@ -20,9 +20,7 @@ import net.j7.commons.io.FilePath.PathType;
 import net.j7.commons.io.TextFileUtils;
 import net.j7.commons.io.TextFileUtils.TextWriter;
 import net.j7.commons.utils.BooleanUtils;
-import net.sourceforge.jiu.util.Sort;
 import org.delafer.xanderView.common.CopyLogger;
-import org.eclipse.swt.internal.win32.SIZE;
 
 public class ApplConfiguration {
 
@@ -106,7 +104,7 @@ public class ApplConfiguration {
 	private Properties defaults(Properties pro) {
 		pro.setProperty(CFG_HEIGHT, String.valueOf(600));
 		pro.setProperty(CFG_WIDTH, String.valueOf(800));
-		pro.setProperty(SCALER, "1;11,500000;10,665000;6,1850000;5,2500000;6;6000000;4,8000000;2,13000000");
+		pro.setProperty(SCALER, "1;11,500000;10,665000;6,1850000;5,2500000;6,6000000;4,8000000;2,13000000");
 		pro.setProperty(LOOP_CURRENT_SOURCE, String.valueOf(true));
 		pro.setProperty(CFG_COPY_DIR, "A:\\target\\src");
 		pro.setProperty(CFG_FULLSCREEN, "1");

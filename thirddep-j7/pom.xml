@@ -66,8 +66,10 @@
                             <goal>shade</goal> 
                         </goals> 
                         <configuration> 
-                            <transformers> 
-                            </transformers> 
+                            <transformers>
+                                <!-- merge META-INF/services (ImageIO SPIs) instead of first-wins -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
                             <filters> 
                             <!-- Exclude of dummy.sf and dummy.dsa -->
                                 <filter> 
@@ -127,11 +129,6 @@
             <scope>provided</scope> 
         </dependency> 
         <dependency> 
-            <groupId>org.eclipse.swt</groupId> 
-            <artifactId>org.eclipse.swt.win32.win32.x86_64</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
             <groupId>org.opencv</groupId> 
             <artifactId>opencv</artifactId> 
             <scope>provided</scope> 
@@ -141,16 +138,14 @@
             <artifactId>thumbnailator</artifactId> 
             <scope>provided</scope> 
         </dependency>
+        <!-- real jar; com.github.umjammer:vavi-commons is only an empty jitpack aggregator pom -->
         <dependency>
-            <groupId>com.github.umjammer</groupId>
+            <groupId>com.github.umjammer.vavi-commons</groupId>
             <artifactId>vavi-commons</artifactId>
             <version>1.1.14</version>
         </dependency>
-        <dependency>
-            <groupId>com.github.umjammer</groupId>
-            <artifactId>vavi-image</artifactId>
-            <version>1.0.11</version>
-        </dependency>
+        <!-- vavi-image dropped: its only used class, vavi.imageio.WrappedImageInputStream, is vendored
+             (jitpack 1.0.11 artifacts are gone; newer versions pull jiu + native-lib-loader) -->
         <dependency>
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna</artifactId>

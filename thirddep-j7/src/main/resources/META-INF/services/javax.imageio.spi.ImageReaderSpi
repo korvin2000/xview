@@ -1,4 +1,3 @@
 vavi.imageio.avif.AvifImageReaderSpi
 com.luciad.imageio.webp.WebPImageReaderSpi
-#vavi.imageio.jpegxl.jna.JpegXLImageReaderSpi
 vavi.imageio.jpegxl.jni.JpegXLImageReaderSpi

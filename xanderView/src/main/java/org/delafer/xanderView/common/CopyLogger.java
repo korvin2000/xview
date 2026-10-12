@@ -14,6 +14,8 @@ import java.util.ArrayDeque;
 import java.util.Objects;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 /**
  * Alex, here is a performance-oriented FIFO text buffer class with:
  * - Fixed capacity buffer
@@ -27,6 +29,9 @@ import java.time.format.DateTimeFormatter;
  * - Uses NIO.2 with BufferedWriter for efficient writes.
  */
 public final class CopyLogger {
+
+	private static final Logger log = LoggerFactory.getLogger(CopyLogger.class);
+
 	private final Path outputFile;
 	private final int capacity;
 	private final ArrayDeque<String> buffer;
@@ -98,7 +103,7 @@ public final class CopyLogger {
 			try {
 				instance.flush();
 			} catch (IOException e) {
-				e.printStackTrace();
+				log.error("Can't flush copy log", e);
 			}
 		}
 	}

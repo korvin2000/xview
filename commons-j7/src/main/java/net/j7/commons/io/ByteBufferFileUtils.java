@@ -8,8 +8,12 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ByteBufferFileUtils {
+
+	private static final Logger log = LoggerFactory.getLogger(ByteBufferFileUtils.class);
 
 	
 	public static void writeToFile(String name, ByteBuffer bb) {
@@ -26,7 +30,7 @@ public class ByteBufferFileUtils {
 			wChannel.force(true);
 			fos.close();
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error("Can't write file", e);
 		}
 	}
 	

@@ -9,12 +9,16 @@ import org.delafer.xanderView.file.entry.Encryptor.DecData;
 import org.delafer.xanderView.hash.Hasher;
 
 import net.j7.commons.strings.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author tavrovsa
  *
  */
 public class ImageDec<E> extends ImageAbstract<E> {
+
+	private static final Logger log = LoggerFactory.getLogger(ImageDec.class);
 	
 	
 	private ImageAbstract<E> si;
@@ -33,7 +37,7 @@ public class ImageDec<E> extends ImageAbstract<E> {
 				this.size = buf.get().getInt();
 				buf.close();
 			} catch (IOException e) {
-				e.printStackTrace();
+				log.error("Can't read size of encrypted image", e);
 			}
 		} else {
 			//init(); //speedup decoding cry
@@ -59,7 +63,7 @@ public class ImageDec<E> extends ImageAbstract<E> {
 			
 			initialized = true;
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error("Can't decrypt image", e);
 		}
 	}
 
@@ -77,7 +81,7 @@ public class ImageDec<E> extends ImageAbstract<E> {
 		try {
 			calcSafeCRC(rawData(identifier, Hasher.HSIZE));
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error("Can't calculate image CRC", e);
 		}
 		return this.crc;
 	}

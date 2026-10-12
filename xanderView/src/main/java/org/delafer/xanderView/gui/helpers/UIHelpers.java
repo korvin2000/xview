@@ -13,8 +13,12 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class UIHelpers {
+
+	private static final Logger log = LoggerFactory.getLogger(UIHelpers.class);
 
 	public static String asString(Object obj) {
 		return obj != null ? obj.toString() : null;
@@ -42,7 +46,7 @@ public class UIHelpers {
 		      try {
 		        control.dispose();
 		      } catch (SWTException e) {
-		    	  e.printStackTrace();
+		    	  log.warn("Can't dispose control", e);
 		      }
 		    }
 		  }
@@ -51,7 +55,7 @@ public class UIHelpers {
 		    try {
 		      composite.dispose();
 		    } catch (SWTException e) {
-		     e.printStackTrace();
+		     log.warn("Can't dispose composite", e);
 		    }
 		  }
 

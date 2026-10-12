@@ -16,7 +16,6 @@ package net.j7.commons.utils;
 import java.util.Calendar;
 import java.util.Date;
 
-import ch.qos.logback.classic.pattern.DateConverter;
 
 /**
  * The Class DateUtils - common methods to work with java.util.Date classes

@@ -12,8 +12,12 @@ import java.util.Objects;
 import net.sf.sevenzipjbinding.PropID;
 import org.delafer.xanderView.hash.Hasher;
 import org.delafer.xanderView.interfaces.IAbstractReader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ImageFS extends ImageAbstract<String> {
+
+	private static final Logger log = LoggerFactory.getLogger(ImageFS.class);
 
 	/*
 	public static ImageAbstract<String> getInstance(String fullPath, String name, long size) {
@@ -46,7 +50,7 @@ public class ImageFS extends ImageAbstract<String> {
 		try {
 			calcSafeCRC(rawData(identifier, Hasher.HSIZE));
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error("Can't calculate image CRC", e);
 		}
 
 		return this.crc;

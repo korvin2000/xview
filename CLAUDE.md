@@ -24,48 +24,47 @@ The repo is **poorly maintained and mid-modernization**. [PLAN.md](PLAN.md) is t
 ## Modules (build order)
 | Module | Role | javac level |
 |---|---|---|
-| `commons-j7/` | Home-grown utilities: `StringUtils`, `FileUtils`, `FilePath`, `jni.LibraryLoader`, … About 70% is unused by the app. | 16 |
-| `thirddep-j7/` | **Vendored third-party sources, patched so their natives load through `LibraryLoader`:** SWT 4.527 (win32), 7-Zip-JBinding, TurboJPEG, Luciad WebP, vavi AVIF (JNA), JXL (JNI), mortennobel scaling, nixx OpenCL. Also custom ImageIO SPIs. | 16 |
+| `commons-j7/` | Home-grown utilities: `StringUtils`, `FileUtils`, `FilePath`, `jni.LibraryLoader`, … (dead packages removed in P2.3). | 21 |
+| `thirddep-j7/` | **Vendored third-party sources, patched so their natives load through `LibraryLoader`:** SWT (win32 4.527 in `src/swt-win32`; gtk/cocoa = stock 3.135 classes + patched `Library` in `src/swt-stock`), 7-Zip-JBinding 16.02-2.01, TurboJPEG, Luciad WebP, vavi AVIF (JNA), JXL (JNI), mortennobel scaling. Also custom ImageIO SPIs. | 21 |
 | `xanderView/` | The app. Main class: `org.delafer.xanderView.gui.MainEntryPoint` | 21 |
 
 ## Commands
-There is no `mvnw`, and neither Maven nor java is on PATH here. Use JDK 21 from `~/.jdks/temurin-21.0.9` and the Maven 3.9.16 bundled with IntelliJ (path in [BUILD.md](docs/BUILD.md)). **`mvn -B -DskipTests package` succeeds** once the OpenCV jar is installed locally (verified 2026-10-12). BUILD.md also explains why the build is hard: custom natives, a WPILib OpenCV jar, jitpack-only vavi-commons.
+Use the Maven Wrapper (Maven 3.9.16, downloaded once). Java isn't on PATH here: set `JAVA_HOME` to `~/.jdks/temurin-21.0.9` (IntelliJ's bundled Maven 3.9.16 also works; path in [BUILD.md](docs/BUILD.md)). **`./mvnw -B -DskipTests package` succeeds** with no manual setup (verified 2026-10-12); OpenCV comes from the WPILib Maven repo. BUILD.md explains what is still hard: custom natives, jitpack-only vavi-commons.
 ```bash
 bash tools/javac-check.sh
 ```
 ```bash
-mvn install:install-file -Dfile=xanderView/opencv/opencv-460.jar -DgroupId=org.opencv -DartifactId=opencv -Dversion=4.6.0 -Dpackaging=jar
+./mvnw -B -DskipTests package
 ```
 ```bash
-mvn -DskipTests install
+./mvnw -B -DskipTests -Dswt.flavor=gtk.linux.x86_64 package
 ```
 ```bash
-java --add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED -jar xanderView/target/xanderview-j7-1.0.0.jar "D:\pics"
+java -jar xanderView/target/xanderview-j7-1.0.0.jar "D:\pics"
 ```
-1. `tools/javac-check.sh` compiles all modules with plain javac in about 30 s. Use it now as the compile check.
-2. The `install:install-file` command is a one-time install of the **small classes-only** OpenCV jar, a WPILib `opencv-java` 4.6.0-5 build. `xanderView/opencv/register.cmd` does the same. The bundled-natives OpenCV distribution is over 100 MB.
-3. `mvn -DskipTests install` builds the shaded jars once P1 is done.
-4. The last command runs the app. The `--add-exports` flag is required because SWT_AWT reflects into `sun.awt.windows`. The argument can be a file, a directory or an archive; without one, the app resumes from `_zlst.csv`.
+1. `tools/javac-check.sh` compiles all modules (Windows SWT flavor) with plain javac in about 30 s. Use it as the quick compile check.
+2. `./mvnw -B -DskipTests package` builds everything; only the app jar is shaded. Windows builds into `target/`.
+3. `-Dswt.flavor=<ws>.<os>.<arch>` (`gtk.linux.x86_64|aarch64`, `cocoa.macosx.x86_64|aarch64`) cross-builds a Linux/macOS jar into `target-<flavor>/`.
+4. The last command runs the app; no JVM flags are needed (manifest `Add-Exports`). The argument can be a file, a directory or an archive; without one, the app resumes from `_zlst.csv`. IDE launches need `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED`.
 
-- **Tests: none.** The repo has 0 `@Test`. The files under `*/src/test` are scratch `main()` programs; run them one at a time from the IDE. "Run a single test" does not apply until JUnit is added (PLAN P3).
-- **Natives are not in git.** The source is `C:\Program Files\xview\libs\windows\amd64\`, which is what `libs.properties` `location` points to. The deployed jar is `C:\Program Files\xview\xanderview.jar`. On first start they are copied to the persistent cache `%APPDATA%\xanderView\libs\windows\amd64\`, and the app loads them from there. All 8 DLLs are required: `swt`, `lib7-Zip-JBinding`, `libgcc_s_seh-1`, `turbojpeg`, `webp-imageio`, `libavif`, `libjxl_jni`, `opencv_java460`. Details are in [DEPENDENCIES §4](docs/DEPENDENCIES.md#natives).
-
+- **Tests: none.** The repo has 0 `@Test`. The files under `*/src/test` are scratch `main()` programs; run them one at a time from the IDE. "Run a single test" does not apply until JUnit is added (PLAN P3.1).
+- **Natives are not in git.** The source is `C:\Program Files\xview\libs\windows\amd64\`, which is what `libs.properties` `location` points to (override: `-Dxview.libs.location` or env `XVIEW_LIBS_LOCATION`). The deployed jar is `C:\Program Files\xview\xanderview.jar`. On first start they are copied to the persistent cache `%APPDATA%\xanderView\libs\windows\amd64\`, and the app loads them from there. All 8 DLLs are required: `swt`, `lib7-Zip-JBinding`, `libgcc_s_seh-1`, `turbojpeg`, `webp-imageio`, `libavif`, `libjxl_jni`, `opencv_java460`. Details are in [DEPENDENCIES §4](docs/DEPENDENCIES.md#natives).
 ## Big picture (details: [ARCHITECTURE.md](docs/ARCHITECTURE.md))
-- **UI**: `MainWindow` (SWT `Display`, `MultiShell` = a windowed shell plus a fullscreen shell) → EMBEDDED `Composite` → `SWT_AWT` frame → AWT `ImageCanvas`. All keys go through one `Display` filter into `MainWindow.bindKeyEvent`, a switch on **raw int key codes**.
+- **UI**: `MainWindow` (SWT `Display`, `MultiShell` = a windowed shell plus a fullscreen shell) → EMBEDDED `Composite` → `SWT_AWT` frame → AWT `ImageCanvas`. All keys go through one `Display` filter into `MainWindow.bindKeyEvent`, a switch on `SWT.*` key constants and character literals.
 - **Playlist**: `CommonContainer(Ext)` iterates a sorted list of `ImageAbstract<E>` entries. The entries come from an `IAbstractReader`: `FileReader` for directories (with a WatchService and optional recursion into archives) or `SevenZipReader` for zip/rar/7z/jzip.
 - **Entries**: `ImageFS` (a path) and `ImageZip` (an archive index). Decorators: `ImageDec` decrypts `.cry`, `ImageEnc` encrypts on copy, `ImageAimDec` takes the first image of an `.aim`. `content()` returns a `Buf` (ByteBuffer, may be mmapped). **Close it.**
 - **Identity ("CRC")**: file size plus xxHash64 of the **first 3072 bytes** (`Hasher.HSIZE`). It keys saved view state and copy dedup.
 - **Render**: `ImageLoader` decodes (JPEG via TurboJPEG with DCT downscale, everything else via ImageIO with WebP/AVIF/JXL SPIs). Then `ImageCanvas.preRenderImage` runs: fit → zoom ×1.05ⁿ → `ScaleFactory` (resizer chosen by pixel count from the `Scaler` config) → `Rotator2D` → `GammaCorrection`.
 - **State**: `ApplConfiguration` (`%APPDATA%\xanderView\xander.properties`), `OrientationStore` (`imagedata.bin`, a CRC→packed long), `CopyService` (one instance per target dir; indexes the target to mark images already copied).
 - **Natives**: every native goes through `net.j7.commons.jni.LibraryLoader`:
-  - It copies `<location>/libs/<os>/<arch>/<name>.<ext>` into `<AppData>/libs/<os>/<arch>/` when the cache file is missing or **its content differs**. The check is exact, runs on the first request per JVM, and publishes atomically.
+  - It copies `<location>/libs/<os>/<arch>/<file>` into `<AppData>/libs/<os>/<arch>/` when the cache file is missing or **its content differs**. The check is exact, runs on the first request per JVM, and publishes atomically.
   - Then it calls `System.load` (JNI), or only sets `jna.library.path` (JNA: libavif).
-  - A missing library **soft-fails**: stderr only, then a later `UnsatisfiedLinkError`.
+  - A missing library **soft-fails**: a logged warning, then a later `UnsatisfiedLinkError` (`tryLoadLibrary` lets a caller fail fast). On Linux/macOS it also tries `lib<name>` and `.dylib`/`.jnilib`.
   - Vendored libraries are patched to call it ([ARCHITECTURE §6](docs/ARCHITECTURE.md)).
 
 ## Rules
 - **Keep the custom native-loading design.** Don't replace vendored native-backed libraries with stock jars that bundle and self-extract natives, and don't replace the minified OpenCV jar with the official one. Every native goes through `LibraryLoader` and the custom builds ([DEPENDENCIES §0](docs/DEPENDENCIES.md)).
-- **Platforms:** Windows/Linux/macOS on x86_64 are required targets and aarch64 is optional, but only Windows x64 natives and SWT code exist today. New code must not add *new* Windows-only assumptions; use `SysInfo` and `LibraryLoader` for OS/arch paths. Porting work is PLAN P5.
+- **Platforms:** Windows/Linux/macOS on x86_64 are required targets and aarch64 is optional, but only Windows x64 natives exist today (Linux/macOS jars build with the stock-SWT flavors). New code must not add *new* Windows-only assumptions; use `SysInfo` and `LibraryLoader` for OS/arch paths. Porting work is PLAN P5.
 - **`thirddep-j7` is vendored code.** Do not reformat or refactor it. Keep patches minimal and tag them `// xview-patch: <why>`. Pure-Java libraries may be replaced by Maven artifacts; native-backed ones may not. See [.claude/rules/thirddep.md](.claude/rules/thirddep.md).
 - **Persisted formats are contracts.** These all affect existing user data, so change them only together with a migration:
   - the `Hasher` algorithm and `HSIZE`
@@ -75,7 +74,7 @@ java --add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED -jar xanderView/targ
 - Singletons use the Bill-Pugh `Holder` idiom with `instance()`. Follow it.
 - These are the owner's local assets. Never delete, move or commit them unless asked:
   - untracked `*.bak` files (ignored by the owner's global gitignore)
-  - the binaries in `xanderView/lib/`, `xanderView/opencv/`, `thirddep-j7/src/main/resources/win32-x86-64/` and `thirddep-j7/src/test/resources/libs/`
+  - the binaries in `xanderView/lib/`, `xanderView/opencv/` and `thirddep-j7/src/test/resources/libs/`
   - the deployed install `C:\Program Files\xview\` and the cache `%APPDATA%\xanderView\`
 - Before declaring a code change done, compile the affected module (`mvn -pl <module> -am compile`, or the javac fallback).
 

@@ -10,8 +10,12 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class HelperFS {
+
+	private static final Logger log = LoggerFactory.getLogger(HelperFS.class);
 
 	public final static boolean isVirtualDirectory(String path) {
 		if (path == null || path.isEmpty())  return false;
@@ -42,7 +46,7 @@ public class HelperFS {
 		try {
 			buf = fc.map(MapMode.READ_ONLY, 0, size);
 		} catch (java.io.IOException e) {
-			System.out.println("filename: "+fileName+" size: "+size);
+			log.warn("filename: {} size: {}", fileName, size);
 			throw e;
 		}
 
@@ -92,7 +96,7 @@ public class HelperFS {
 				skip = msg != null && (msg.contains("duplicate") || msg.contains("slice"));
 			}
 			if (!skip) {
-				e.printStackTrace();
+				log.warn("Can't release direct buffer", e);
 			}
         }
 

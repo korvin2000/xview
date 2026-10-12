@@ -30,8 +30,12 @@ import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CopyService {
+
+	private static final Logger log = LoggerFactory.getLogger(CopyService.class);
 
 	private static final Map<String, CopyService> multitons = Collections.synchronizedMap(new TreeMap<>());
 
@@ -243,7 +247,7 @@ public class CopyService {
 			return State.Success;
 
 		} catch (Throwable e) {
-			e.printStackTrace();
+			log.error("Can't copy image", e);
 			return State.Error;
 		}
 
@@ -257,25 +261,25 @@ public class CopyService {
 		}
 		images.add(add);
 		
-		//debug
+		//debug (traverse the synchronized set only while holding its monitor: watcher and copy worker mutate it)
 		boolean ok = false;
-		for (ImageAbstract<?> next : images) {
-			if (next == add) {
-				ok =true;
-				break;
+		synchronized (images) {
+			for (ImageAbstract<?> next : images) {
+				if (next == add) {
+					ok =true;
+					break;
+				}
 			}
 		}
 		if (!ok) {
-			System.out.println("Can't add image!");
+			log.warn("Can't add image!");
 		}
 	}
 	
 	private void removeImage(ImageAbstract<?> add) {
 		if (add == null) return ;
-		int size = images.size();
-		images.remove(add);
-		if (images.size() == size) {
-			System.out.println("Can't remove image: "+add);
+		if (!images.remove(add)) { // atomic; the former size-before/after check raced with concurrent mutations
+			log.warn("Can't remove image: {}", add);
 		}
 	}
 
@@ -328,7 +332,7 @@ public class CopyService {
 			try {
 				CopyLogger.getInstance().add(entry, target);
 			} catch (IOException historyError) {
-				historyError.printStackTrace();
+				log.warn("Can't write copy history entry", historyError);
 			}
 		}
     }
@@ -370,7 +374,7 @@ public class CopyService {
 						removeImage(entryDel);
 						break;
 					default:
-						System.out.println("Other type");
+						log.debug("Other type");
 					}
 
 				}
@@ -380,7 +384,7 @@ public class CopyService {
 
 			readStructure();
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't initialize copy service", e);
 		}
 
 	}

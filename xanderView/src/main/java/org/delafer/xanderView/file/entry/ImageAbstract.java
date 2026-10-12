@@ -15,8 +15,12 @@ import org.delafer.xanderView.gui.config.ApplInstance;
 import org.delafer.xanderView.hash.Hasher;
 import org.delafer.xanderView.interfaces.IAbstractReader;
 import org.delafer.xanderView.interfaces.IImageEntry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class ImageAbstract<E> implements IImageEntry<E> {
+
+	private static final Logger log = LoggerFactory.getLogger(ImageAbstract.class);
 
 	public enum ImageType{JPEG, BMP, PNG, AVIF, WEBP, JXL, AIM, ENCRYPTED, XAV, UNKNOWN};
 
@@ -118,7 +122,7 @@ public abstract class ImageAbstract<E> implements IImageEntry<E> {
 			calcCRC(ret.get());
 			return ret;
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error("Can't read image content", e);
 		}
 		return null;
 	}

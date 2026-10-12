@@ -1,15 +1,15 @@
-<?xml version="1.0" ?> 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"> 
-    <modelVersion>4.0.0</modelVersion> 
-    <parent> 
-        <groupId>net.j7</groupId> 
-        <artifactId>j7-tools</artifactId> 
-        <version>1.0.0</version> 
-    </parent> 
-    <groupId>net.j7.thirddep</groupId> 
-    <artifactId>thirddep-j7</artifactId> 
-    <name>thirddep-j7</name> 
-    <version>1.0.0</version> 
+<?xml version="1.0" ?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>net.j7</groupId>
+        <artifactId>j7-tools</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <groupId>net.j7.thirddep</groupId>
+    <artifactId>thirddep-j7</artifactId>
+    <name>thirddep-j7</name>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
     <scm>
         <url>https://github.com/umjammer/vavi-image-avif/</url>
@@ -23,120 +23,100 @@
     </repositories>
 
 <!--	<url>http://maven.apache.org</url>-->
-    <build> 
-        <plugins> 
-            <plugin> 
-                <groupId>org.apache.maven.plugins</groupId> 
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <source>16</source>
-                    <target>16</target>
-                    <compilerArgs>
-                        <arg>--add-exports</arg><arg>jdk.unsupported/com.sun.nio.file=ALL-UNNAMED</arg>
-                    </compilerArgs>
-                </configuration> 
-            </plugin> 
-            <plugin> 
-                <groupId>org.apache.maven.plugins</groupId> 
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.4.2</version>
-                <configuration>
-                    <archive> 
-<!--                        <index>true</index>-->
-<!--                        <manifest>-->
-<!--                          <addClasspath>true</addClasspath>-->
-<!--                        </manifest>-->
-                        <manifestEntries> 
-                            <SWT-OS>win32</SWT-OS> 
-                            <SWT-WS>win32</SWT-WS> 
-                            <SWT-Arch>x86_64</SWT-Arch> 
-                        </manifestEntries> 
-                    </archive> 
-                </configuration> 
-            </plugin> 
-            <plugin> 
-                <groupId>org.apache.maven.plugins</groupId> 
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.0</version>
+    <!-- plain library jar: only the app (xanderView) shades; compiler release and plugin versions come from the parent -->
+    <build>
+        <plugins>
+            <!-- SWT flavor sources: src/swt-win32 (vendored 4.527) or src/swt-stock (patched Library overlay); see parent swt-* profiles -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
                 <executions>
-                    <execution> 
-                        <phase>package</phase> 
-                        <goals> 
-                            <goal>shade</goal> 
-                        </goals> 
-                        <configuration> 
-                            <transformers>
-                                <!-- merge META-INF/services (ImageIO SPIs) instead of first-wins -->
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-                            </transformers>
-                            <filters> 
-                            <!-- Exclude of dummy.sf and dummy.dsa -->
-                                <filter> 
-                                    <artifact>*:*</artifact> 
-                                    <excludes> 
-                                        <exclude>META-INF/*.SF</exclude> 
-                                        <exclude>META-INF/*.DSA</exclude> 
-                                        <exclude>META-INF/*.RSA</exclude> 
-                                    </excludes> 
-                                </filter> 
-                            </filters> 
-                        </configuration> 
-                    </execution> 
-                </executions> 
-            </plugin> 
-        </plugins> 
-    </build> 
-    <dependencies> 
-        <dependency> 
-            <groupId>junit</groupId> 
-            <artifactId>junit</artifactId> 
+                    <execution>
+                        <id>swt-flavor-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${swt.source.dir}/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>swt-flavor-resources</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>add-resource</goal>
+                        </goals>
+                        <configuration>
+                            <resources>
+                                <resource>
+                                    <directory>${swt.source.dir}/resources</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- non-Windows flavors: stock SWT classes only (no natives, no stock loader, no signatures) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unpack-stock-swt</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${swt.unpack.skip}</skip>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.eclipse.platform</groupId>
+                                    <artifactId>org.eclipse.swt.${swt.ws}.${swt.os}.${swt.arch}</artifactId>
+                                    <version>${swt.stock.version}</version>
+                                    <type>jar</type>
+                                    <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+                                    <excludes>META-INF/**,**/*.so,**/*.jnilib,**/*.dylib,**/*.dll,org/eclipse/swt/internal/Library.class,org/eclipse/swt/internal/Library$*.class,about_files/**,about.html,fragment.properties,.api_description</excludes>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <!-- SWT's Library.isLoadable() checks these in the jar that contains Library.class -->
+                            <SWT-OS>${swt.os}</SWT-OS>
+                            <SWT-WS>${swt.ws}</SWT-WS>
+                            <SWT-Arch>${swt.arch}</SWT-Arch>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
             <scope>test</scope>
-        </dependency> 
-        <dependency> 
-            <groupId>org.slf4j</groupId> 
-            <artifactId>slf4j-api</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>org.slf4j</groupId> 
-            <artifactId>slf4j-simple</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>ch.qos.logback</groupId> 
-            <artifactId>logback-classic</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>net.j7.commons</groupId> 
-            <artifactId>commons-j7</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>org.jocl</groupId> 
-            <artifactId>jocl</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>com.carrotsearch</groupId> 
-            <artifactId>hppc</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>com.jhlabs</groupId> 
-            <artifactId>filters</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>org.opencv</groupId> 
-            <artifactId>opencv</artifactId> 
-            <scope>provided</scope> 
-        </dependency> 
-        <dependency> 
-            <groupId>net.coobird</groupId> 
-            <artifactId>thumbnailator</artifactId> 
-            <scope>provided</scope> 
+        </dependency>
+        <dependency>
+            <groupId>net.j7.commons</groupId>
+            <artifactId>commons-j7</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.jhlabs</groupId>
+            <artifactId>filters</artifactId>
+            <scope>provided</scope>
         </dependency>
         <!-- real jar; com.github.umjammer:vavi-commons is only an empty jitpack aggregator pom -->
         <dependency>
@@ -151,5 +131,5 @@
             <artifactId>jna</artifactId>
             <version>5.15.0</version>
         </dependency>
-    </dependencies> 
-</project> 
+    </dependencies>
+</project>

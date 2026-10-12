@@ -29,9 +29,14 @@ import net.j7.commons.io.AbstractFileProcessor.FileInfo;
 import net.j7.commons.io.AbstractFileProcessor.Recurse;
 import net.j7.commons.io.FileUtils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class FileReader implements IAbstractReader {
 
-	ContentChangeWatcher watcher;
+	private static final Logger log = LoggerFactory.getLogger(FileReader.class);
+
+	volatile ContentChangeWatcher watcher;
 	private WatchService watchService;
 	private volatile Thread watchThread;
 	private volatile boolean closing;
@@ -117,7 +122,7 @@ public class FileReader implements IAbstractReader {
 					try {
 						flushFiles();
 					} catch (IOException e) {
-						e.printStackTrace();
+						log.warn("cannot add the last files of {}", getContainerPath(), e);
 					}
 				}
 
@@ -129,7 +134,7 @@ public class FileReader implements IAbstractReader {
 			scanner.start();
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("cannot scan {}", getContainerPath(), e);
 		}
 
 	}
@@ -171,18 +176,40 @@ public class FileReader implements IAbstractReader {
 	@Override
 	public void initialize() {
 
+		// Register on the caller's thread, before the caller scans (CommonContainer: initialize() then read()),
+		// so files created during the scan are reported; duplicates are filtered by the container (PLAN P3.5).
+		final Path path = Paths.get(getContainerPath());
+		if (!Files.isDirectory(path)) return ;
+		final WatchService registeredWatchService;
+		try {
+			registeredWatchService = path.getFileSystem().newWatchService();
+		} catch (IOException e) {
+			if (!closing) log.warn("cannot watch {}", path, e);
+			return ;
+		}
+		try {
+			try {
+				path.register(registeredWatchService,new Kind[] {ENTRY_CREATE,ENTRY_DELETE}, ExtendedWatchEventModifier.FILE_TREE);
+			} catch (UnsupportedOperationException noFileTree) {
+				// FILE_TREE (subtree watch) exists only on Windows; elsewhere watch the top directory (PLAN B14)
+				path.register(registeredWatchService, ENTRY_CREATE, ENTRY_DELETE);
+			}
+		} catch (IOException | RuntimeException e) {
+			try {
+				registeredWatchService.close();
+			} catch (IOException ignore) {
+			}
+			if (!closing) log.warn("cannot watch {}", path, e);
+			return ;
+		}
+		watchService = registeredWatchService;
+
 		Thread t = new Thread("FileReaderWatch-" + Integer.toHexString(System.identityHashCode(this))) {
 
 			@Override
 			public void run() {
-				WatchService localWatchService = null;
+				WatchService localWatchService = registeredWatchService;
 				try {
-					Path path = Paths.get(getContainerPath());
-					if (!Files.isDirectory(path)) return ;
-					localWatchService = path.getFileSystem().newWatchService();
-					watchService = localWatchService;
-
-					path.register(localWatchService,new Kind[] {ENTRY_CREATE,ENTRY_DELETE}, ExtendedWatchEventModifier.FILE_TREE);
 					WatchKey watchKey;
 					while(!closing && !Thread.currentThread().isInterrupted()){
 						try{
@@ -197,11 +224,13 @@ public class FileReader implements IAbstractReader {
 //								Path watchedPath = (Path) watchKey.watchable();
 								Path target = (Path)event.context();
 								Path fullpath = path.resolve(target);
-								if (null != watcher) {
+								ContentChangeWatcher currentWatcher = watcher;
+								if (null != currentWatcher && !closing) {
 									try {
-										watcher.onEvent(asEnum(kind), fullpath.toString());
+										currentWatcher.onEvent(asEnum(kind), fullpath.toString());
 									} catch (IOException io) {
-										if (!closing) throw io;
+										// e.g. the file vanished again before it could be read: skip this event, keep watching
+										if (!closing) log.debug("skipped watch event {} {}: {}", kind, fullpath, io.toString());
 									}
 								}
 							}
@@ -214,10 +243,6 @@ public class FileReader implements IAbstractReader {
 						} catch (ClosedWatchServiceException closed) {
 							break;
 						}
-					}
-				} catch (IOException e) {
-					if (!closing) {
-						e.printStackTrace();
 					}
 				} finally {
 					watchThread = null;

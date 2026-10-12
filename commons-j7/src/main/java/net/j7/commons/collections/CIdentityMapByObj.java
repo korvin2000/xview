@@ -1,9 +1,13 @@
 package net.j7.commons.collections;
 
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @SuppressWarnings({"unchecked"})
 public final class CIdentityMapByObj<K, E> {
+
+	private static final Logger log = LoggerFactory.getLogger(CIdentityMapByObj.class);
 
 	private transient E[] table;
 	private transient K[] keys;
@@ -136,7 +140,7 @@ public final class CIdentityMapByObj<K, E> {
 
 	public synchronized void stat() {
 		for (K x : keys)
-		if (null!=x) System.out.println("key="+x);
+		if (null!=x) log.debug("key={}", x);
 	}
 
 

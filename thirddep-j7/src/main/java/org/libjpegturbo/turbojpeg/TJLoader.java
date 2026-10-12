@@ -29,13 +29,12 @@
 package org.libjpegturbo.turbojpeg;
 
 import net.j7.commons.jni.LibraryLoader;
-import org.eclipse.swt.internal.Library;
 
 final class TJLoader {
   static void load() {
 //	  System.out.println("loading");
 //	  LibraryLoader.loadLibrary("libturbojpeg");//minGw
     //System.loadLibrary("turbojpeg64");
-	Library.loadLibrary("turbojpeg"); //mvc64
+	LibraryLoader.loadLibrary("turbojpeg"); // xview-patch: was SWT internal.Library.loadLibrary (itself patched to LibraryLoader); direct call keeps TurboJPEG independent of the SWT flavor (PLAN P5.1)
   }
 };

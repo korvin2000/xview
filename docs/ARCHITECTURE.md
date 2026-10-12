@@ -4,16 +4,20 @@
 
 ## 1. Module graph
 ```
-xanderView (app, Java 21) ──► thirddep-j7 (vendored libs, Java 16) ──► commons-j7 (utils, Java 16)
-      │                              │ provided: jocl, hppc, jhlabs, opencv (local install), thumbnailator
-      └──► commons-j7                └ compile: vavi-commons (jitpack), jna 5.15; SWT 4.527 is vendored source
-      └──► hppc, jhlabs filters, lz4 1.3 (xxHash), unidecode, opencv 4.6 (local install)
+xanderView (app) ──► thirddep-j7 (vendored libs) ──► commons-j7 (utils)        all modules: release 21
+      │                    │ provided: jhlabs, commons-j7
+      └──► commons-j7      └ compile: vavi-commons (jitpack), jna 5.15
+      └──► hppc, jhlabs filters, lz4 1.3 (xxHash), unidecode, opencv-java 4.6.0-5 (WPILib), slf4j-simple
+SWT flavor (parent profiles swt-*): win32 = vendored 4.527 sources (thirddep src/swt-win32);
+            gtk/cocoa = stock 3.135 classes unpacked into thirddep + patched Library (src/swt-stock)
 ```
-Each module's `package` phase runs maven-shade. The app's shaded jar is runnable and has `Main-Class: org.delafer.xanderView.gui.MainEntryPoint`.
+Only the app runs maven-shade. Its shaded jar is runnable: `Main-Class: org.delafer.xanderView.gui.MainEntryPoint`, `Add-Exports: java.desktop/sun.awt.windows`, `Enable-Native-Access: ALL-UNNAMED`, and the flavor's `SWT-OS/WS/Arch`.
 
 ## 2. Startup sequence
 ```
 MainEntryPoint.main(args)
+ ├─ PlatformLaunch.relaunchIfNeeded  → macOS without -XstartOnFirstThread / Linux Wayland without GDK_BACKEND:
+ │                                     start the app again with it, exit with its code (PLAN P5.4)
  ├─ System props: sun.java2d.uiScale=1, dpiaware=false
  ├─ Shutdown.addHook()                 → on exit: config.save, OrientationStore.save, CopyLogger.flush,
  │                                        wait for ApplInstance.openTasks==0 (≥1.5 s), CopyService.closeAll, interrupt threads
@@ -35,10 +39,11 @@ MainEntryPoint.main(args)
 | `LazyUpdater` | Debounces window resize (100 ms), then `preRenderImage` + repaint | A new thread is created when the old one has died |
 | `LazyUpdaterAbstract` | Debounces gamma re-render (750 ms) | |
 | `copyService` worker (daemon) | Copy queue, one per target | Counts tasks in `ApplInstance.openTasks` |
-| Reader watch threads | `WatchService` on the source and target dirs | Callbacks mutate `SortedLinkedList` (not synchronized) |
+| Reader watch threads | `WatchService` on the source and target dirs (registered before the scan) | Playlist callbacks: IO outside, list/cursor changes under the `CommonContainer` monitor (PLAN P3.5) |
 | Config timer | Saves config when dirty; flushes `CopyLogger` every 8th tick | |
 | Shutdown hook | Persists state | |
-To touch SWT widgets from other threads, use `Display.asyncExec`. To touch AWT, use `EventQueue.invokeLater`.
+To touch SWT widgets from other threads, use `Display.asyncExec`. To touch AWT, use `EventQueue.invokeLater`. Never `syncExec`/`invokeAndWait` from a thread that may hold a container or `CopyService` lock.
+`CommonContainer` locking: one monitor guards `images`, `iterator`, `current`, `direction`; navigation steps are atomic; nobody holds it across a splash (nested event loop) or a `CopyService` check (CRC IO). Lock order: container → `CopyService.images`; the watcher holds only the container lock.
 
 ## 4. Data model
 ```
@@ -80,10 +85,11 @@ key → CommonContainerExt.next()/prev() → ImageAbstract
 ## 6. Native loading (the reason the libraries are vendored)
 **Design intent (from the owner):** stock SWT, 7-Zip-JBinding, OpenCV and similar jars ship natives for many OSes and extract them themselves. xanderView instead uses **custom, performance-optimized native builds**, some compiled and copied by hand, that are loaded by one routine and **stored persistently** per user. To make that work, every native-using library is vendored and its loader is patched to call `net.j7.commons.jni.LibraryLoader`. The same reason explains the **small classes-only OpenCV jar** (`xanderView/opencv/opencv-460.jar`, a WPILib 4.6.0-5 build, 326 KB) instead of a 100 MB+ bundled-natives distribution.
 
-`LibraryLoader.loadLibrary(name)` / `checkLibrary(name, load)`:
-1. **Target (persistent cache):** `getFSPath("xanderView", name)` = `<AppDataDir>/libs/<os>/<arch>/<name>.<ext>`.
+`LibraryLoader.loadLibrary(name)` / `checkLibrary(name, load)` / `tryLoadLibrary(name)` (returns whether it loaded; used by the stock-SWT `Library`):
+0. **File name** (`fileName`, PLAN P5.2): the load name's candidates are `<name>.<ext>` and, on Linux/macOS, `lib<name>.<ext>`; macOS tries `.dylib` then `.jnilib` (JNA libraries only `.dylib`). The first candidate present in the **source** wins, else the first present in the cache, else the first one (reported missing). Windows has exactly one candidate, `<name>.dll`. Memoized per JVM.
+1. **Target (persistent cache):** `<AppDataDir>/libs/<os>/<arch>/<file>`.
 2. **Copy on change (lazy, per library, on its first request in a JVM):**
-   - **Source:** `<location>/libs/<os>/<arch>/<name>.<ext>`. `location` comes from `/libs.properties` on the classpath (a file path, `file:`, `jar:` or `http` URL). Without it, the jar that contains `libs.properties` is used.
+   - **Source:** `<location>/libs/<os>/<arch>/<file>`. `location` (a directory path, `file:`, `jar:` or `http` URL) comes from, in order: the system property `xview.libs.location`, the environment variable `XVIEW_LIBS_LOCATION`, `location` in `/libs.properties` on the classpath, else the jar that contains `libs.properties` (PLAN P1.9).
    - **When it copies:** when the cache file is missing, or its **content differs** from the source. The check is an exact comparison: `Files.mismatch` for local files, a streamed compare otherwise. It measured about 21–28 ms for all 8 DLLs, with a warm OS file cache.
    - **How it publishes:** writes a sibling temp file `<file>.<pid>-<nanos>.tmp`, then does `ATOMIC_MOVE`. For local-file sources the temp file is verified byte by byte; stream sources rely on a complete read with no exception.
    - **If the target is in use:** when the old DLL is mapped by a running instance, it is renamed to `<file>.old-<nanos>` and the new one moved in.
@@ -91,29 +97,29 @@ key → CommonContainerExt.next()/prev() → ImageAbstract
    - **Cleanup:** leftovers older than 10 minutes are swept once per JVM.
    - **Co-location** (`resolve`): if a Windows dependency had to come from the source directory, the library is loaded from there too, so its imports resolve next to it. A load that fails because the file vanished mid-swap is resolved and retried once.
 3. **Load:**
-   - `load=true` → `System.load(file)` (JNI).
+   - `load=true` → `System.load(file)` (JNI). Unix: the published file is made `rwxr-xr-x` without spawning `chmod`.
    - `load=false` → only makes the file available and sets `jna.library.path` / `jna.platform.library.path` to its folder (JNA libs).
    - Per-JVM state per name is MISSING / COPIED / LOADED. A later `loadLibrary` promotes COPIED to LOADED, and a failed `System.load` is retried on the next call. The method is `synchronized` (re-entrant).
 4. **Windows dependencies:** requesting `libavif` also makes `libgcc_s_seh-1` available next to it (copy only; `WINDOWS_DEPENDENCIES`). This is preventive: the current libavif 1.1.1 loads without it (PLAN B9).
 5. **Soft failure:**
-   - A missing source with no cache prints `doesn't exist: …` once and returns `false` without throwing. The failure surfaces later as `UnsatisfiedLinkError`.
+   - A missing source with no cache logs `doesn't exist: …` once (warning) and returns `false` without throwing. The failure surfaces later as `UnsatisfiedLinkError`.
    - A present but incompatible DLL throws from `System.load` immediately.
 
 | | Windows | Linux | macOS |
 |---|---|---|---|
 | `<AppDataDir>` (first writable, `io/SysInfo`) | `%APPDATA%\xanderView` (e.g. `C:\Users\<u>\AppData\Roaming\xanderView`) | `~/.local/share/.xanderView` (note the dot) | `~/Library/Application Support/xanderView` |
-| `<os>` / `<ext>` | `windows` / `dll` | `linux` / `so` | `macos` / `jnilib` (not `.dylib`; JNA needs `.dylib`, see PLAN P5) |
-| `<arch>` (from `os.arch`) | `amd64` (x86_64 is mapped to amd64), `aarch64` | `x86_64` (amd64 is mapped to x86_64), `aarch64` | `x86_64`, `aarch64` |
-| Names | The load name is the literal file stem, so `lib` prefixes are part of the name (`lib7-Zip-JBinding`, `libavif`, `libjxl_jni`) | | |
+| `<os>` / `<ext>` | `windows` / `dll` | `linux` / `so` | `macos` / `dylib`, then `jnilib` (JNA: `dylib` only) |
+| `<arch>` (from `os.arch`; `arm64` → `aarch64`) | `amd64` (x86_64 is mapped to amd64), `aarch64` | `x86_64` (amd64 is mapped to x86_64), `aarch64` | `x86_64`, `aarch64` |
+| Names | The load name is the literal file stem, so `lib` prefixes are part of the name (`lib7-Zip-JBinding`, `libavif`, `libjxl_jni`) | `<name>` or `lib<name>` (`turbojpeg` → `libturbojpeg.so`) | as Linux |
 
 Load sites (Windows names):
 - JNI:
-  - SWT `internal/Library.loadLibrary`: `swt`, plus soft-failing `swt-gdip` and `swt-awt`
+  - SWT `internal/Library.loadLibrary` (win32 4.527): `swt`, plus soft-failing `swt-gdip` and `swt-awt`. Stock-SWT flavors (gtk/cocoa 3.135, patched `Library`): `tryLoadLibrary` for `<name>-<platform>-<version>` (e.g. `swt-pi3-gtk-4974r10`), `<name>-<platform>`, `<name>`; throws `UnsatisfiedLinkError` if none loads
   - `SevenZip.ensureLibraryIsInitialized`: `lib7-Zip-JBinding`, `libgcc_s_seh-1`, then `initLoadedLibraries()`
-  - `TJLoader`: `turbojpeg`, via the SWT `Library`
+  - `TJLoader`: `turbojpeg` (direct `LibraryLoader` call since P5.1)
   - `WebP.loadNativeLibrary`: `webp-imageio`
   - `JpegXLImageReader` (static): `libjxl_jni`
-  - `ResizerNewOpenCV`/`ResizerOpenCV` (static): `opencv_java460`
+  - `ResizerNewOpenCV` (static): `opencv_java460`
 - JNA: `Avif` calls `checkLibrary("libavif", false)`, then `Native.load("avif")`. JNA on Windows also tries the `lib` prefix, which finds `libavif.dll`.
 
 Full DLL table and platform status: [DEPENDENCIES.md#natives](DEPENDENCIES.md#natives).

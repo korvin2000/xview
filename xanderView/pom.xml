@@ -19,27 +19,18 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
 				<configuration>
-					<source>21</source>
-					<target>21</target>
 					<showWarnings>false</showWarnings>
 					<debug>false</debug>
-					<optimize>true</optimize>
 					<!--<compilerArgument>-Xlint:none</compilerArgument>-->
 					<compilerArgs>
-						<arg>--add-exports</arg>
-						<arg>java.desktop/sun.awt.windows=ALL-UNNAMED</arg>
 						<arg>-Xlint:none</arg>
-						<arg>--add-opens</arg>
-						<arg>java.base/sun.reflect.generics.reflectiveObjects=ALL-UNNAMED</arg>
 					</compilerArgs>
 				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>
-				<version>3.6.0</version>
 				<executions>
 					<execution>
 						<phase>package</phase>
@@ -55,9 +46,13 @@
 									<mainClass>org.delafer.xanderView.gui.MainEntryPoint</mainClass>
 									<!-- vendored SWT (thirddep-j7) checks these in its containing jar -->
 									<manifestEntries>
-										<SWT-OS>win32</SWT-OS>
-										<SWT-WS>win32</SWT-WS>
-										<SWT-Arch>x86_64</SWT-Arch>
+										<SWT-OS>${swt.os}</SWT-OS>
+										<SWT-WS>${swt.ws}</SWT-WS>
+										<SWT-Arch>${swt.arch}</SWT-Arch>
+										<!-- java -jar needs no flags: SWT_AWT (win32 SWT 4.527) reflects into sun.awt.windows; JDKs without
+										     that package ignore the entry. Enable-Native-Access silences the JNI/FFM warnings (JDK 22+). -->
+										<Add-Exports>java.desktop/sun.awt.windows</Add-Exports>
+										<Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
 									</manifestEntries>
 								</transformer>
 								<!-- merge META-INF/services (ImageIO SPIs) instead of first-wins -->
@@ -97,24 +92,15 @@
 			<artifactId>slf4j-simple</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>ch.qos.logback</groupId>
-			<artifactId>logback-classic</artifactId>
-			<scope>provided</scope>
-		</dependency>
-		<dependency>
 			<groupId>net.j7.commons</groupId>
 			<artifactId>commons-j7</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.jocl</groupId>
-			<artifactId>jocl</artifactId>
-			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>com.carrotsearch</groupId>
 			<artifactId>hppc</artifactId>
 		</dependency>
 		<dependency>
+			<!-- runtime need of the vendored mortennobel AdvancedResizeOp (thirddep has it provided) -->
 			<groupId>com.jhlabs</groupId>
 			<artifactId>filters</artifactId>
 		</dependency>
@@ -133,13 +119,8 @@
 			<artifactId>thirddep-j7</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>org.opencv</groupId>
-			<artifactId>opencv</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>net.coobird</groupId>
-			<artifactId>thumbnailator</artifactId>
-			<scope>provided</scope>
+			<groupId>edu.wpi.first.thirdparty.frc2023.opencv</groupId>
+			<artifactId>opencv-java</artifactId>
 		</dependency>
 	</dependencies>
 </project>

@@ -3,8 +3,12 @@ package org.delafer.xanderView.file.entry;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class Buf implements Closeable {
+
+	private static final Logger log = LoggerFactory.getLogger(Buf.class);
 
 	private transient ByteBuffer b, owner;
 	private transient Closeable c;
@@ -38,7 +42,7 @@ public final class Buf implements Closeable {
 			try {
 				this.close();
 			} catch (IOException e) {
-				e.printStackTrace();
+				log.warn("Can't close buffer", e);
 			}
 
 		 return bytes;

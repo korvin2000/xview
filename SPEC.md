@@ -37,7 +37,7 @@
 - Fullscreen toggles with `Enter` or a double-click. Its state is persisted in `fullscreen`.
 - Resizer choice depends on the image's pixel count (§8, `Scaler`).
 
-## 5. Keys — `gui/MainWindow.bindKeyEvent` (raw SWT key codes; keep this table in sync)
+## 5. Keys — `gui/MainWindow.bindKeyEvent` (`SWT.*` constants and character literals; keep this table in sync)
 | Key | Action |
 |---|---|
 | → / PgDn | next image |
@@ -59,7 +59,7 @@
 | F7 / F8 / F9 | copy **decrypted** (plain image) |
 | F3 | copy **as-is** (encrypted stays encrypted, plain stays plain) |
 | Ctrl+O / Ctrl+D | open an image (dialog) / choose the copy target directory (dialog) |
-Other keys print `code:<n>` to stdout.
+Other keys are logged at debug level (`unbound key code: <n>`; enable with `-Dorg.slf4j.simpleLogger.defaultLogLevel=debug`).
 
 ## 6. Copy and encryption — `file/CopyService`, `file/entry/Encryptor`, `CipherKey`
 - `target.folder` holds one or more directories separated by `;`. `M`/`N` cycle through them.
@@ -103,10 +103,10 @@ Other keys print `code:<n>` to stdout.
 
 ## 9. Non-functional
 - **Platforms:**
-  - Implemented: Windows 10+ x64 (the SWT Java code is the win32 flavor).
-  - Required targets: Linux and macOS x86_64. Optional: aarch64 on all three (PLAN P5).
-- **Runtime:** JDK/JRE 21+. The deployed install bundles Liberica JRE 23. The JVM needs `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` (SWT_AWT).
+  - Implemented: Windows 10+ x64 (SWT 4.527 win32 flavor).
+  - Required targets: Linux and macOS x86_64; optional: aarch64 on all three. Their jars build (`-Dswt.flavor`, SWT 3.135 gtk/cocoa), but the natives don't exist yet (PLAN P5.3).
+- **Runtime:** JDK/JRE 21+. The deployed install bundles Liberica JRE 23. `java -jar` needs no flags: the manifest has `Add-Exports: java.desktop/sun.awt.windows` (SWT_AWT) and `Enable-Native-Access: ALL-UNNAMED`. Classpath/IDE launches pass `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED`. On macOS the app restarts itself once with `-XstartOnFirstThread`, and on Linux under Wayland with `GDK_BACKEND=x11` (`-Dxview.relaunch=false` disables this).
 - **Natives:** 8 custom DLLs on Windows: `swt`, `lib7-Zip-JBinding`, `libgcc_s_seh-1`, `turbojpeg`, `webp-imageio`, `libavif` (JNA), `libjxl_jni`, `opencv_java460`.
-  - They are copied, on first use or when changed, from `<location>/libs/windows/amd64/` (`libs.properties`; deployed as `C:\Program Files\xview\libs\`) into the persistent cache `%APPDATA%\xanderView\libs\windows\amd64\` (§7).
+  - They are copied, on first use or when changed, from `<location>/libs/windows/amd64/` (`libs.properties`, or `-Dxview.libs.location` / env `XVIEW_LIBS_LOCATION`; deployed as `C:\Program Files\xview\libs\`) into the persistent cache `%APPDATA%\xanderView\libs\windows\amd64\` (§7).
   - Missing libraries fail softly: the feature breaks with `UnsatisfiedLinkError`. See [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md#natives).
-- **Logging:** stdout/stderr only (`System.out`, `printStackTrace`).
+- **Logging:** SLF4J with `slf4j-simple` to stderr at level `info` (config `simplelogger.properties`; override with `-Dorg.slf4j.simpleLogger.*`). Vendored libraries may still print directly.

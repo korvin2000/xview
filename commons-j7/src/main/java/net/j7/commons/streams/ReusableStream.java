@@ -3,8 +3,12 @@ package net.j7.commons.streams;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ReusableStream  {
+
+	private static final Logger log = LoggerFactory.getLogger(ReusableStream.class);
 
 	private static final int EOF = -1;
 	private static final int BUF_SIZE = 1024;
@@ -46,7 +50,7 @@ public class ReusableStream  {
 				//ZipExtractor.writeFile("d:\\filename"+(++xxx)+".dat", data);
 				//is.close();
 
-		} catch (Exception e) {e.printStackTrace();}
+		} catch (Exception e) {log.error("Can't read stream", e);}
 
 		} else {
 			data = new byte[0];

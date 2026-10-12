@@ -8,8 +8,12 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class CipherKey {
+
+	private static final Logger log = LoggerFactory.getLogger(CipherKey.class);
 
 	public static byte[] iv = { (byte) 0x19, (byte) 0x73, (byte) 0x41, (byte) 0x8c, (byte) 0x7e, (byte) 0xd8, (byte) 0xee, (byte) 0x89, (byte) 0x19, (byte) 0x73, (byte) 0x41, (byte) 0x8c, (byte) 0x7e, (byte) 0xd8, (byte) 0xee, (byte) 0x89 };
 
@@ -34,7 +38,7 @@ public class CipherKey {
 			SecretKeySpec secretKeySpec = new SecretKeySpec(key, "AES");
 			return secretKeySpec;
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't create cipher key", e);
 		}
 		return null;
 
@@ -55,7 +59,7 @@ public class CipherKey {
 			SecretKeySpec secret = new SecretKeySpec(secretKey.getEncoded(), "AES");
 			return secret;
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't create PBE cipher key", e);
 		}
 		return null;
 

@@ -11,10 +11,19 @@ import org.delafer.xanderView.gui.helpers.ImageRepository;
 import java.net.URISyntaxException;
 import java.net.URL;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class MainEntryPoint {
+
+	private static final Logger log = LoggerFactory.getLogger(MainEntryPoint.class);
 
 
 	public static void main(String[] args) {
+		// first: a missing per-OS prerequisite (macOS main thread, X11 on Wayland) restarts the app (PLAN P5.4)
+		int relaunched = PlatformLaunch.relaunchIfNeeded(args);
+		if (relaunched >= 0) System.exit(relaunched);
+
 		System.setProperty("sun.java2d.dpiaware", "false");
 		System.setProperty("prism.allowhidpi", "false");
 		System.setProperty("sun.java2d.win.uiScaleX", "1");
@@ -53,11 +62,10 @@ public class MainEntryPoint {
 
 	private static void initializeApp() {
 		ImageRepository.loadImages();
-//		ResizerOpenCV.instance();
 		try {
 			OrientationStore.instance().load();
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("cannot load the saved view state", e);
 		}
 		CopyService.instance();
 	}

@@ -39,12 +39,17 @@ import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.program.Program;
 import org.eclipse.swt.widgets.Display;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author Olivier
  *
  */
 public class ImageRepository {
+
+	private static final Logger log = LoggerFactory.getLogger(ImageRepository.class);
+
 	private static boolean NO_IMAGES = false;
 
 	private static Display display;
@@ -131,7 +136,7 @@ public class ImageRepository {
 					return null;
 				}
 			else {
-				System.out.println("ImageRepository:loadImage:: Resource not found: "+ res);
+				log.warn("ImageRepository:loadImage:: Resource not found: {}", res);
 
 				im = new Image(display, 1, 1);
 
@@ -171,8 +176,7 @@ public class ImageRepository {
 
 		if (path == null) {
 
-			System.out.println("ImageRepository: Unknown image name '" + name
-					+ "'");
+			log.warn("ImageRepository: Unknown image name '{}'", name);
 
 			return null;
 		}

@@ -27,10 +27,14 @@ import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
 public final class MainWindow extends ImageLoader{
+
+	private static final Logger log = LoggerFactory.getLogger(MainWindow.class);
 
 	private MultiShell shell;
 	private Display display;
@@ -183,7 +187,6 @@ public final class MainWindow extends ImageLoader{
 	}
 
 	protected void bindKeyEvent(Event e) {
-//		System.out.println("CODE: "+e.keyCode);
 		switch (e.keyCode) {
 		case SWT.ESC:
 			terminateApp();
@@ -196,39 +199,39 @@ public final class MainWindow extends ImageLoader{
 		case SWT.PAGE_UP:
 			loadImage(pointer, pointer.getPrevious(), panel);
 			break;
-		case 50:
+		case '2':
 			changeGamma(true);
 			break;
-		case 49:
+		case '1':
 			changeGamma(false);
 			break;
-		case 16777272:
+		case SWT.KEYPAD_8:
 			panel.moveVr(true);;
 			panel.showImage();
 			break;
-		case 16777266:
+		case SWT.KEYPAD_2:
 			panel.moveVr(false);
 			panel.showImage();
 			break;
-		case 16777270:
+		case SWT.KEYPAD_6:
 			panel.moveHr(true);;
 			panel.showImage();
 			break;
-		case 16777268:
+		case SWT.KEYPAD_4:
 			panel.moveHr(false);;
 			panel.showImage();
 			break;
-		case 112:
+		case 'p':
 			//random access
 			pointer.switchRandomAccess();
 			new SplashWindow(shell.active(), pointer.isRandomMode() ? State.Special1 : State.Success);
 			break;
-		case 113:
+		case 'q':
 			//only non existing: "Q"
 			pointer.switchOnlyExisting();
 			new SplashWindow(shell.active(), pointer.isOnlyExisting() ? State.Special1 : State.Success);
 			break;
-		case 115:
+		case 's':
 			//S -> save
 			ImageAbstract<?> current = pointer.getCurrent();
 			if (current != null) {
@@ -240,59 +243,56 @@ public final class MainWindow extends ImageLoader{
 			}
 			new SplashWindow(shell.active(), State.Special1);
 			break;
-		case 16777258:
+		case SWT.KEYPAD_MULTIPLY:
 			panel.scaleReset();
 			panel.showImage();
 			break;
-		case 16777259:
+		case SWT.KEYPAD_ADD:
 			panel.scaleUp();
 			panel.showImage();
 			break;
-		case 16777261:
+		case SWT.KEYPAD_SUBTRACT:
 			panel.scaleDown();
 			panel.showImage();
 			break;
-		case 16777226:
+		case SWT.F1:
 			//F1 F1 F1
 			//copy encrypted
 			//enc -> enc
 			//dec -> enc
-			System.out.println("F1:"+e.keyCode);
 			//copy always encrypted
 			CopyService.instance().copy(ImageEnc.getEncrypted(pointer.getCurrent()), new CopyObserver(shell, panel));
 			break;
-	case 16777233://F8
-	case 16777232://F7
-	case 16777234://F9
+		case SWT.F8:
+		case SWT.F7:
+		case SWT.F9:
 			//copy decrypted
 			//enc -> dec
 			//dec -> dec
-			System.out.println("F3:"+e.keyCode);
 			CopyService.instance().copy(pointer.getCurrent(), new CopyObserver(shell, panel));
 			break;
-	case 16777228:
+		case SWT.F3:
 			//copy "as is" unchanged
 			//enc -> enc
 			//dec -> dec
-			System.out.println("F7-F9");
 			CopyService.instance().copy(ImageDec.getOriginal(pointer.getCurrent()), new CopyObserver(shell, panel));
 //			SplashWindow splash = new SplashWindow(shell.active(), res);
 			break;
-		case 107:
-		case 108:
-		case 59:
+		case 'k':
+		case 'l':
+		case ';':
 			panel.rotate(Action.RotateLeft);
 			panel.showImage();
 			break;
-		case 114:
+		case 'r':
 			panel.rotate(Action.RotateRight);
 			panel.showImage();
 			break;
-		case 118:
+		case 'v':
 			panel.rotate(Action.FlipVertical);
 			panel.showImage();
 			break;
-		case 104:
+		case 'h':
 			panel.rotate(Action.FlipHorizontal);
 			panel.showImage();
 			break;
@@ -309,15 +309,15 @@ public final class MainWindow extends ImageLoader{
 		case SWT.SPACE:
 			changeCopyDir(0);
 			break;
-		case 109:
+		case 'm':
 			changeCopyDir(1);
 
 			break;
-		case 110:
+		case 'n':
 			changeCopyDir(-1);
 			break;
 		default:
-			System.out.println("code:"+e.keyCode);
+			log.debug("unbound key code: {}", e.keyCode);
 			break;
 		}
 	}

@@ -29,6 +29,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Provides OS name and architecture name.
@@ -36,6 +38,9 @@ import java.util.Locale;
  * @author leo
  */
 public class OSInfo {
+
+    private static final Logger log = LoggerFactory.getLogger(OSInfo.class);
+
     private static final HashMap<String, String> archMapping = new HashMap<>();
 
     public static final String X86 = "x86";
@@ -156,7 +161,7 @@ public class OSInfo {
                 }
             }
         } catch (Throwable e) {
-            System.err.println("Error while running uname -m: " + e.getMessage());
+            log.warn("Error while running uname -m: {}", e.getMessage());
             return "unknown";
         }
     }
@@ -202,7 +207,7 @@ public class OSInfo {
                         return "armv7";
                     }
                 } else {
-                    System.err.println("WARNING! readelf not found. Cannot check if running on an armhf system, " +
+                    log.warn("WARNING! readelf not found. Cannot check if running on an armhf system, " +
                         "armel architecture will be presumed.");
                 }
             } catch (IOException e) {

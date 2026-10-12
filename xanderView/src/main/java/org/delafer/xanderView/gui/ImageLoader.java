@@ -22,8 +22,12 @@ import org.delafer.xanderView.gui.config.OrientationStore;
 import org.libjpegturbo.turbojpeg.TJ;
 import org.libjpegturbo.turbojpeg.TJDecompressor;
 import org.libjpegturbo.turbojpeg.TJScalingFactor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class ImageLoader {
+
+	private static final Logger log = LoggerFactory.getLogger(ImageLoader.class);
 
 	public static final int ON = 1;
 
@@ -33,11 +37,12 @@ public abstract class ImageLoader {
 	protected void loadImage(CommonContainer container, ImageAbstract<?> entry, ImageCanvas panel) {
 		try {
 			if (entry == null) return ;
-			String info = Args.fill("%1 [%2/%3]", entry.shortName(),String.valueOf(container.currentIndex()),String.valueOf(container.size()));
+			int[] position = container.position(); // index and size from one consistent state (watcher may add/remove)
+			String info = Args.fill("%1 [%2/%3]", entry.shortName(),String.valueOf(position[0]),String.valueOf(position[1]));
 
 			loadImage(entry, info, panel);
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't load image", e);
 		}
 	}
 
@@ -80,7 +85,7 @@ public abstract class ImageLoader {
 
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't load image", e);
 		}
 	}
 
@@ -95,7 +100,7 @@ public abstract class ImageLoader {
 			long t1 = System.currentTimeMillis();
 			BufferedImage ret =  ImageIO.read(input);
 			long t2 = System.currentTimeMillis();
-			System.out.println("Decoding time: "+(t2-t1));
+			log.debug("Decoding time: {}", t2-t1);
 			return ret;
 		}
 	}

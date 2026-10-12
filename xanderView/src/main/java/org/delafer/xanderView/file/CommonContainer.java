@@ -30,7 +30,20 @@ import net.j7.commons.io.TextFileUtils;
 import net.j7.commons.io.TextFileUtils.TextReader;
 import net.j7.commons.strings.StringUtils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Playlist: a sorted list of entries plus a direction-aware cursor.
+ * <p>
+ * Thread safety (PLAN P3.5): {@code images}, {@code iterator}, {@code current} and {@code direction} are guarded by
+ * this object's monitor. The UI thread navigates, the AWT EDT reads the position, and the reader's watch thread
+ * applies file events; the watcher does its IO outside the lock. Subclasses must not hold the monitor while doing
+ * IO or opening UI (splashes run a nested event loop), so composite navigation calls the atomic steps one by one.
+ */
 public class CommonContainer {
+
+	private static final Logger log = LoggerFactory.getLogger(CommonContainer.class);
 
 	SortedLinkedList<ImageAbstract<?>> images;
 	ListIterator<ImageAbstract<?>> iterator;
@@ -42,7 +55,7 @@ public class CommonContainer {
 	boolean loop;
 
 
-	public int size() {
+	public synchronized int size() {
 		return images.size();
 	}
 
@@ -66,7 +79,7 @@ public class CommonContainer {
 
 					entry = cont.length>1 ? Numbers.getResultAsInteger(cont[1]) : null;
 				} catch (IOException e) {
-					e.printStackTrace();
+					log.warn("cannot read the last entry {}", tryIt, e);
 				}
 			}
 		}
@@ -78,27 +91,30 @@ public class CommonContainer {
 		Comparator<ImageAbstract<?>> comparator = this.reader.getComparator();
 		this.images = new SortedLinkedList<ImageAbstract<?>>(comparator);
 		loop = ApplConfiguration.instance().getBoolean(ApplConfiguration.LOOP_CURRENT_SOURCE);
-		initialize();
+		// the watcher registered by initialize() is live from here on: it waits until the cursor is set up
+		synchronized (this) {
+			initialize();
 
-		if (null == entry)
-		entry = reader.getSingleEntry();
+			if (null == entry)
+			entry = reader.getSingleEntry();
 
-		if (entry == null) {
-			if (images.size()>0) {
-				getNext();
-			}
-		} else {
-			try {
-				current = reader.getEntryByIdentifier(entry);
-				updateIterator();
-			} catch (IOException e) {
-				e.printStackTrace();
+			if (entry == null) {
+				if (images.size()>0) {
+					getNext();
+				}
+			} else {
+				try {
+					current = reader.getEntryByIdentifier(entry);
+					updateIterator();
+				} catch (IOException e) {
+					log.warn("cannot open the start entry {}", entry, e);
+				}
 			}
 		}
 
 	}
 
-	protected void initImagesForComparator(Comparator<ImageAbstract<?>> comparator) {
+	protected synchronized void initImagesForComparator(Comparator<ImageAbstract<?>> comparator) {
 		if (null == comparator) {
 			comparator = this.reader.getComparator();
 		}
@@ -134,11 +150,12 @@ public class CommonContainer {
 		return new FileReader(aFile, mode);
 	}
 
-	public void initialize() {
+	public synchronized void initialize() {
 
 		try {
 			reader.register(new ContentChangeWatcher() {
 
+				// runs on the reader's watch thread: IO first, then the list and cursor under the container monitor
 				@Override
 				public void onEvent(FileEvent type, Object id)throws IOException {
 					switch (type) {
@@ -151,18 +168,25 @@ public class CommonContainer {
 						if (ImageType.UNKNOWN.equals(imgType)) return ;
 
 						ImageAbstract<?> entryNew = reader.getEntryByIdentifier(id);
-						images.add(entryNew);
-						updateIterator();
+						synchronized (CommonContainer.this) {
+							// the initial scan may already contain it (the watch is registered before the scan);
+							// scanned entries carry the canonical path (FileInfo uses toRealPath), events the raw one
+							if (null != findByIdentifier(""+id) || null != findByIdentifier(String.valueOf(entryNew.getIdentifier()))) return ;
+							images.add(entryNew);
+							updateIterator();
+						}
 						break;
 					case Delete:
-						ImageAbstract<?> entryDel = findByIdentifier(""+id);
-						images.remove(entryDel);
-						if (current != null) {
-							if (entryDel != null && Equals.equal(current.getIdentifier(), entryDel.getIdentifier())) {
-								current = null;
+						synchronized (CommonContainer.this) {
+							ImageAbstract<?> entryDel = findByIdentifier(""+id);
+							images.remove(entryDel);
+							if (current != null) {
+								if (entryDel != null && Equals.equal(current.getIdentifier(), entryDel.getIdentifier())) {
+									current = null;
+								}
 							}
+							updateIterator();
 						}
-						updateIterator();
 						break;
 					default:
 					}
@@ -175,7 +199,7 @@ public class CommonContainer {
 			readStructure(images);
 			iterator = images.listIterator();
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("cannot read {}", pathFile, e);
 		}
 
 	}
@@ -185,12 +209,12 @@ public class CommonContainer {
 			try {
 				reader.close();
 			} catch (Exception e) {
-				e.printStackTrace();
+				log.warn("cannot close the reader of {}", pathFile, e);
 			}
 		}
 	}
 	
-	protected ImageAbstract<?>  findByIdentifier(String ident) {
+	protected synchronized ImageAbstract<?>  findByIdentifier(String ident) {
 		for (ImageAbstract<?> next : images) {
 			if (Equals.equal(next.getIdentifier(), ident)) return next;
 		}
@@ -202,13 +226,13 @@ public class CommonContainer {
 		reader.read(list);
 	}
 
-	public int currentIndex() {
+	public synchronized int currentIndex() {
 		int idx = this.getNextIndex();
 		if (direction == -1) idx++;
 		return idx;
 	}
 
-	public ImageAbstract<?> getNext() {
+	public synchronized ImageAbstract<?> getNext() {
 		if (direction == -1) {
 			if (iterator.hasNext()) {
 				iterator.next();
@@ -249,10 +273,11 @@ public class CommonContainer {
 		direction = -1;
 	}
 
-	public int getNextIndex() {
+	public synchronized int getNextIndex() {
 		return iterator.nextIndex();
 	}
 
+	// not synchronized as a whole: each step is atomic, and overrides of getPrevious()/getNext() may open UI
 	public ImageAbstract<?> getPrevious10() {
 		if (size()>= 10) for (int i = 8; i >= 0; i--) getPrevious();
 
@@ -265,7 +290,7 @@ public class CommonContainer {
 		return getNext();
 	}
 
-	public ImageAbstract<?> getPrevious() {
+	public synchronized ImageAbstract<?> getPrevious() {
 		if (direction == 1) {
 			if (iterator.hasPrevious()) {
 				iterator.previous();
@@ -285,7 +310,12 @@ public class CommonContainer {
 		return current;
 	}
 
-	public int getPreviousIndex() {
+	/** {@code [currentIndex(), size()]} read atomically, for the caption. */
+	public synchronized int[] position() {
+		return new int[] {currentIndex(), size()};
+	}
+
+	public synchronized int getPreviousIndex() {
 		return iterator.previousIndex();
 	}
 
@@ -304,7 +334,7 @@ public class CommonContainer {
 	}
 
 
-	public ImageAbstract<?> getCurrent() {
+	public synchronized ImageAbstract<?> getCurrent() {
 		return current;
 	}
 

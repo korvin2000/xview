@@ -38,7 +38,7 @@ tools/ ─ javac-check.sh (compile without Maven), check-docs.sh (doc drift)
 | Add a config option | [SPEC §8](../SPEC.md) | `gui/config/ApplConfiguration` |
 | Fix a native DLL load failure | [ARCHITECTURE §6](ARCHITECTURE.md), [DEPENDENCIES §4](DEPENDENCIES.md#natives), [BUILD deploy layout](BUILD.md) | `commons-j7/.../jni/LibraryLoader`, `libs.properties`; check `%APPDATA%\xanderView\libs\…` (stale cache, PLAN B8) |
 | Add or update a native library | [DEPENDENCIES §0, §4](DEPENDENCIES.md) | the patched loader in thirddep (load name = file stem), the `libs/<os>/<arch>/` source, the cache |
-| Port to Linux/macOS or aarch64 | [PLAN P5](../PLAN.md), [DEPENDENCIES §4 matrix](DEPENDENCIES.md#natives) | SWT source set, `LibraryLoader`, `SysInfo`, natives |
+| Port to Linux/macOS or aarch64 | [PLAN P5](../PLAN.md), [DEPENDENCIES §4 matrix](DEPENDENCIES.md#natives) | parent `swt-*` profiles, `thirddep-j7/src/swt-{win32,stock}`, `gui/PlatformLaunch`, `LibraryLoader`, `SysInfo`, natives |
 | Fix the vavi / jitpack dependencies | [DEPENDENCIES §5](DEPENDENCIES.md) | `thirddep-j7/pom.xml` |
 | Window, fullscreen, splash UI | [SOURCE_MAP gui/*](SOURCE_MAP.md) | `gui/helpers/MultiShell`, `gui/splash/*` |
 | Remove dead code | [PLAN P2](../PLAN.md), [SOURCE_MAP](SOURCE_MAP.md) status D/X | grep for references first |
@@ -46,7 +46,7 @@ tools/ ─ javac-check.sh (compile without Maven), check-docs.sh (doc drift)
 | Shutdown or persistence timing | [ARCHITECTURE §2–3](ARCHITECTURE.md) | `general/Shutdown`, `ApplConfiguration` timer |
 
 ## Search tips (token savers)
-- The app code is small (about 100 files, about 10k LOC excluding `scale/deprecated`). `thirddep-j7` holds about 1000 vendored files, so **exclude it from searches** unless the task is about a vendored lib: use `Grep` with `path: xanderView/src` or `glob: "!thirddep-j7/**"`.
-- Key handling is one switch on raw ints. Find a key by its SWT constant value in [SPEC §5](../SPEC.md), not by grepping `SWT.F1`.
+- The app code is small (about 90 files, about 8k LOC). `thirddep-j7` holds about 1000 vendored files, so **exclude it from searches** unless the task is about a vendored lib: use `Grep` with `path: xanderView/src` or `glob: "!thirddep-j7/**"`.
+- Key handling is one switch on `SWT.*` constants and character literals (`SWT.F1`, `'s'`); the key table is [SPEC §5](../SPEC.md).
 - `CRC` in the code means the xxHash64 prefix hash, not CRC32.
 - Many classes have a scratch `main()`; they are not entry points. The only real one is `gui/MainEntryPoint`.

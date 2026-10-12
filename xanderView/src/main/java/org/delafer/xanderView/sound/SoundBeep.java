@@ -6,8 +6,12 @@ import java.io.InputStream;
 import javax.sound.sampled.*;
 
 import net.j7.commons.streams.Streams;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SoundBeep {
+
+	private static final Logger log = LoggerFactory.getLogger(SoundBeep.class);
 
 //	public  void beep2()
 //	{ InputStream is = SoundBeep.class.getResourceAsStream("sound01.wav");
@@ -50,7 +54,7 @@ public class SoundBeep {
 		    clip.start();
 		}
 		catch (Exception e) {
-			e.printStackTrace();
+			log.warn("Can't play sound", e);
 		}
 
 	}

@@ -8,20 +8,24 @@ import org.delafer.xanderView.file.CopyService;
 import org.delafer.xanderView.gui.config.ApplConfiguration;
 import org.delafer.xanderView.gui.config.ApplInstance;
 import org.delafer.xanderView.gui.config.OrientationStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class Shutdown {
 
+	private static final Logger log = LoggerFactory.getLogger(Shutdown.class);
+
 	public static void addHook() {
 		Runtime.getRuntime().addShutdownHook(new Thread() {
 			public void run() {
-				System.out.println("Terminating application...");
+				log.info("Terminating application...");
 				ApplConfiguration.instance().save();
 				try {
 					OrientationStore.instance().save();
 					CopyLogger.flushIfNeeded();
 				} catch (IOException e) {
-					e.printStackTrace();
+					log.error("Can't save orientation data or flush copy log", e);
 				}
 				int i = 0;
 				while (ApplInstance.openTasks.get() > 0 || i < 6) {
@@ -70,12 +74,12 @@ public class Shutdown {
 				} catch (Throwable e) {}
 			}
 		}
-		System.out.println(tCnt+" ACTIVE THREADS STOPPED");
+		log.info("{} ACTIVE THREADS STOPPED", tCnt);
 		clearKeyboard();
 //		cur.interrupt();
 
 	} catch (Exception e) {
-		e.printStackTrace();
+		log.error("Error while terminating application", e);
 	}
 
 	}

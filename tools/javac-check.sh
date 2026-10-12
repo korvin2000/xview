@@ -2,6 +2,8 @@
 # Compile all three modules with plain javac (no Maven needed), using jars from the local
 # Maven repo. A fast "does it still compile?" check of main sources only: no resources, no tests,
 # no shading, no runtime/native check (use `mvn package` + jar inspection for that).
+# Covers the Windows SWT flavor (vendored thirddep-j7/src/swt-win32); the stock-SWT flavors need Maven
+# (they unpack the stock SWT jar, see docs/BUILD.md).
 # Output goes to a disposable directory, never to target/.
 # Usage: bash tools/javac-check.sh [outdir]   (outdir must be new/empty or a previous javac-check dir)
 set -uo pipefail
@@ -38,21 +40,16 @@ cp_join() { local IFS="$SEP"; echo "$*"; }
 need() { local j; j=$(jar "$@"); [[ -z "$j" ]] && { echo "MISSING jar: $1" >&2; echo "$1" >> "$OUT/work/missing.txt"; }; echo "$j"; }
 
 CP_COMMONS=$(cp_join \
-  "$(need "$M2/org/slf4j/slf4j-api/1.7.10/slf4j-api-1.7.10.jar")" \
-  "$(need "$M2/ch/qos/logback/logback-classic/1.1.2/logback-classic-1.1.2.jar")" \
-  "$(need "$M2/ch/qos/logback/logback-core/1.1.2/logback-core-1.1.2.jar")" \
-  "$(need "$M2/javax/xml/bind/jaxb-api/2.3.1/jaxb-api-2.3.1.jar")")
+  "$(need "$M2/org/slf4j/slf4j-api/1.7.10/slf4j-api-1.7.10.jar")")
 
 CP_THIRD=$(cp_join "$CP_COMMONS" "$OUT/commons" \
-  "$(need "$M2/org/jocl/jocl/0.2.0-RC00/jocl-0.2.0-RC00.jar")" \
-  "$(need "$M2/com/carrotsearch/hppc/0.8.2/hppc-0.8.2.jar")" \
   "$(need "$M2/com/jhlabs/filters/2.0.235-1/filters-2.0.235-1.jar")" \
-  "$(need "$M2/org/opencv/opencv/4.6.0/opencv-4.6.0.jar" "$ROOT/xanderView/opencv/opencv-460.jar")" \
-  "$(need "$M2/net/coobird/thumbnailator/0.4.8/thumbnailator-0.4.8.jar")" \
   "$(need "$M2/com/github/umjammer/vavi-commons/vavi-commons/1.1.14/vavi-commons-1.1.14.jar")" \
   "$(need "$M2/net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar")")
 
 CP_APP=$(cp_join "$CP_THIRD" "$OUT/third" \
+  "$(need "$M2/com/carrotsearch/hppc/0.8.2/hppc-0.8.2.jar")" \
+  "$(need "$M2/edu/wpi/first/thirdparty/frc2023/opencv/opencv-java/4.6.0-5/opencv-java-4.6.0-5.jar")" \
   "$(need "$M2/net/jpountz/lz4/lz4/1.3.0/lz4-1.3.0.jar")" \
   "$(need "$M2/me/xuender/unidecode/0.0.7/unidecode-0.0.7.jar")")
 [[ -s "$OUT/work/missing.txt" ]] && { echo "missing jars; run a Maven build once to populate ~/.m2" >&2; exit 2; }
@@ -61,9 +58,9 @@ CP_APP=$(cp_join "$CP_THIRD" "$OUT/third" \
 srcs() { find "$1" -name '*.java' | while read -r f; do printf '"%s"\n' "$(winpath "$f")"; done; }
 
 rc=0
-run() { # name level classpath outdir listfile [extra javac args]
+run() { # name release classpath outdir listfile [extra javac args]
   local name=$1 lvl=$2 cp=$3 out=$4 lst=$5; shift 5
-  if "$JAVAC" -nowarn -encoding UTF-8 -source "$lvl" -target "$lvl" "$@" -cp "$cp" -d "$out" @"$lst" > "$OUT/work/$name.log" 2>&1; then
+  if "$JAVAC" -nowarn -encoding UTF-8 --release "$lvl" "$@" -cp "$cp" -d "$out" @"$lst" > "$OUT/work/$name.log" 2>&1; then
     echo "OK    $name ($(find "$out" -name '*.class' | wc -l) classes)"
   else
     rc=1; echo "FAIL  $name: $(grep -c 'error:' "$OUT/work/$name.log") errors -> $OUT/work/$name.log"
@@ -71,9 +68,9 @@ run() { # name level classpath outdir listfile [extra javac args]
   fi
 }
 srcs commons-j7/src/main/java > "$OUT/work/commons.lst"
-srcs thirddep-j7/src/main/java > "$OUT/work/third.lst"
+{ srcs thirddep-j7/src/main/java; srcs thirddep-j7/src/swt-win32/java; } > "$OUT/work/third.lst"
 srcs xanderView/src/main/java > "$OUT/work/app.lst"
-run commons 16 "$CP_COMMONS" "$OUT/commons" "$OUT/work/commons.lst"
-run thirddep 16 "$CP_THIRD" "$OUT/third" "$OUT/work/third.lst" --add-exports jdk.unsupported/com.sun.nio.file=ALL-UNNAMED
-run xanderView 21 "$CP_APP" "$OUT/app" "$OUT/work/app.lst" --add-exports java.desktop/sun.awt.windows=ALL-UNNAMED
+run commons 21 "$CP_COMMONS" "$OUT/commons" "$OUT/work/commons.lst"
+run thirddep 21 "$CP_THIRD" "$OUT/third" "$OUT/work/third.lst"
+run xanderView 21 "$CP_APP" "$OUT/app" "$OUT/work/app.lst"
 exit $rc

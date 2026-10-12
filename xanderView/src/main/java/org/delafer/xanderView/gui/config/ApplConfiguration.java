@@ -21,8 +21,12 @@ import net.j7.commons.io.TextFileUtils;
 import net.j7.commons.io.TextFileUtils.TextWriter;
 import net.j7.commons.utils.BooleanUtils;
 import org.delafer.xanderView.common.CopyLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ApplConfiguration {
+
+	private static final Logger log = LoggerFactory.getLogger(ApplConfiguration.class);
 
 
 //	Map<Long,Long>
@@ -120,7 +124,7 @@ public class ApplConfiguration {
 		try {
 		  properties.load(new FileInputStream(config));
 		} catch (IOException e) {
-		  e.printStackTrace();
+		  log.error("Can't load configuration", e);
 		}
 
 		final AtomicInteger started = new AtomicInteger(0);
@@ -205,7 +209,7 @@ public class ApplConfiguration {
 			Path pth = Paths.get(get(CFG_CRY_DIR));
 			pwd = Files.exists(pth) ? new String(Files.readAllBytes(pth), "utf-8").trim() : "";
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error("Can't read encryption password file", e);
 		}
 		return pwd;
 	}
@@ -245,7 +249,7 @@ public class ApplConfiguration {
 					tw.write(ApplInstance.lastEntry);
 					tw.close();
 				} catch (Exception e) {
-					e.printStackTrace();
+					log.error("Can't save last entry", e);
 				}
 
 			}
@@ -253,7 +257,7 @@ public class ApplConfiguration {
 
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't save configuration", e);
 		}
 		unsaved = false;
 

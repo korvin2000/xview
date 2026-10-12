@@ -12,7 +12,6 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
-import org.eclipse.swt.internal.win32.OS;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.*;
 
@@ -120,7 +119,7 @@ public class MultiShell  {
 		event.type = SWT.Resize;
 		event.doit = true;
 		event.display = Display.getCurrent();
-		event.time = OS.GetMessageTime();
+		event.time = (int) System.currentTimeMillis(); // synthetic event; was win32 OS.GetMessageTime() (PLAN P5.1: no SWT internals in the app)
 		event.widget = active();
 		event.item = event.widget;
 		return event;

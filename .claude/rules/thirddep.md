@@ -14,15 +14,16 @@ paths:
 
   Mark each patched spot `// xview-patch: <reason>`, and record it in `docs/DEPENDENCIES.md` §2.
 - Existing patches route loading to LibraryLoader (load names in parentheses):
-  - SWT `internal/Library.loadLibrary` (`swt`; `swt-gdip` and `swt-awt` soft-fail)
+  - SWT win32 `src/swt-win32/.../internal/Library.loadLibrary` (`swt`; `swt-gdip` and `swt-awt` soft-fail)
+  - SWT gtk/cocoa `src/swt-stock/.../internal/Library.loadLibrary` (upstream 3.135 stems via `LibraryLoader.tryLoadLibrary`; throws if none loads)
   - `SevenZip.ensureLibraryIsInitialized` (`lib7-Zip-JBinding`, `libgcc_s_seh-1`)
-  - `TJLoader` (`turbojpeg`)
+  - `TJLoader` (`turbojpeg`, direct `LibraryLoader` call)
   - `WebP` (`webp-imageio`)
   - `Avif` (`checkLibrary("libavif", false)` → JNA `avif`)
   - `JpegXLImageReader` (`libjxl_jni`)
-- A load name **must equal the file stem** in `libs/<os>/<arch>/`. Renaming a load name requires renaming the DLL in the native source dir **and** in the user's cache.
-- The vendored SWT is **4.527, win32 flavor** (Eclipse 4.5). It matches the custom `swt.dll`, which identifies itself as `swt-win32-4527`, and it is the only SWT on the classpath (the 4.3 artifact was removed). Its message bundles are in `src/main/resources/org/eclipse/swt/internal/SWTMessages*.properties`. Never use APIs from newer SWT docs without checking the vendored source. Linux and macOS need gtk/cocoa SWT code (PLAN P5).
+- A load name **must equal the file stem** in `libs/<os>/<arch>/` (on Linux/macOS `LibraryLoader` also tries `lib<name>`, and `.dylib`/`.jnilib` on macOS). Renaming a load name requires renaming the DLL in the native source dir **and** in the user's cache.
+- **SWT flavors** (parent `swt-*` profiles, `-Dswt.flavor=<ws>.<os>.<arch>`): the vendored SWT **4.527, win32 flavor** (Eclipse 4.5) lives in `src/swt-win32/{java,resources}` and matches the custom `swt.dll` (`swt-win32-4527`); never use APIs from newer SWT docs without checking that source. Linux/macOS use the stock SWT 3.135 classes, unpacked at build time without natives/signatures/stock `Library`, plus the patched `src/swt-stock/java/org/eclipse/swt/internal/Library.java`. The app must use public SWT API only (it compiles against both).
 - `vavi/imageio/WrappedImageInputStream.java` is vendored from vavi-image 1.0.11, with an `available()` xview-patch. Don't re-add the `vavi-image` dependency (its 1.0.11 jitpack artifact gives 404; newer versions pull `jiu` + `native-lib-loader`).
 - When changing ImageIO plugins, keep `src/main/resources/META-INF/services/*` in sync.
-- Scope searches to the specific package. The SWT tree alone has about 800 files.
-- Compile-check with `bash tools/javac-check.sh` (thirddep compiles with `--add-exports jdk.unsupported/com.sun.nio.file=ALL-UNNAMED` at level 16).
+- Scope searches to the specific package. The win32 SWT tree alone has about 680 files.
+- Compile-check with `bash tools/javac-check.sh` (release 21, Windows flavor); stock flavors: `./mvnw -B -DskipTests -Dswt.flavor=gtk.linux.x86_64 package`.

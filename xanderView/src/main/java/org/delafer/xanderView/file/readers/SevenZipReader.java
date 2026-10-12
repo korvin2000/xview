@@ -23,8 +23,12 @@ import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream;
 import net.sf.sevenzipjbinding.impl.RandomAccessNioStream;
 
 import javax.xml.crypto.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SevenZipReader implements IAbstractReader {
+
+	private static final Logger log = LoggerFactory.getLogger(SevenZipReader.class);
 
 
 	private RandomAccessFile randomAccessFile;
@@ -68,7 +72,7 @@ public class SevenZipReader implements IAbstractReader {
 			}
 
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error("Can't read archive entries", e);
 		}
 
 	}
@@ -79,7 +83,7 @@ public class SevenZipReader implements IAbstractReader {
 			archive.close();
 			randomAccessFile.close();
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.warn("Can't close archive", e);
 		}
 	}
 

@@ -23,13 +23,22 @@
 hs_err_pid*
 replay_pid*
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
-thirddep-j7/target/
+# Maven build output (target-<swt.flavor>/ = cross-platform builds, see docs/BUILD.md)
+**/target/
+**/target-*/
+**/dependency-reduced-pom.xml
 **/**/inputFiles.lst
-xanderView/target/
+
+# owner's local backups and assets (never commit)
+*.bak
+*.javabak
 xanderView/lib/
 **/**/dummy.md
-dependency-reduced-pom.xml
 thirddep-j7/src/test/resources/libs/
+
+# native libraries live outside git (docs/DEPENDENCIES.md §4)
+*.dll
+*.so
+*.dylib
+*.jnilib
+*.lib

@@ -1,7 +1,11 @@
 package net.j7.commons.utils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ByteUtils {
+
+    private static final Logger log = LoggerFactory.getLogger(ByteUtils.class);
 
     private static final long MIN_VALUE_B = Long.MIN_VALUE + 1;
 
@@ -56,7 +60,7 @@ public final class ByteUtils {
 //	}
 
     public static void show(byte[] arr) {
-    	System.out.println(arr[0] + " & "+arr[1]);
+    	log.debug("{} & {}", arr[0], arr[1]);
     }
 
 

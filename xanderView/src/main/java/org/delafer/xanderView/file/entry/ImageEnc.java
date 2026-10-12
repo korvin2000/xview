@@ -9,12 +9,16 @@ import net.j7.commons.io.FileUtils;
 
 import org.delafer.xanderView.file.entry.Encryptor.DecData;
 import org.delafer.xanderView.gui.config.ApplConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author tavrovsa
  *
  */
 public class ImageEnc<E> extends ImageAbstract<E> {
+
+	private static final Logger log = LoggerFactory.getLogger(ImageEnc.class);
 
 	ImageAbstract<E> si;
 	Buf buf;
@@ -36,7 +40,7 @@ public class ImageEnc<E> extends ImageAbstract<E> {
 		try {
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't initialize encrypted image", e);
 		}
 	}
 

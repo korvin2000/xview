@@ -48,4 +48,5 @@ xanderView is used to **triage large image collections quickly**. You open a fol
 ## Open questions for the owner
 - How are the custom natives built (toolchain, flags, upstream versions)? This should be documented for reproducibility (PLAN P1.9).
 - Are `.aim`, `.xav` and `jzip` formats still in use?
-- Should `scale/deprecated`, `scale/others` and the OpenCL rotators be kept for benchmarking, or deleted?
+- ~~Should `scale/deprecated`, `scale/others` and the OpenCL rotators be kept for benchmarking, or deleted?~~ Deleted (owner decision, 2026-10-12, PLAN P2.2).
+- Natives source for reproducible builds: Git LFS in-repo, or a release archive plus a SHA-256 manifest (PLAN P1.9)?

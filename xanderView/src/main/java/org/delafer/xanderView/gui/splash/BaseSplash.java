@@ -5,9 +5,13 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public abstract class BaseSplash {
+
+   private static final Logger log = LoggerFactory.getLogger(BaseSplash.class);
 
    private int splashPos = 0;
    private final int SPLASH_MAX = 5;
@@ -43,7 +47,7 @@ public abstract class BaseSplash {
                    }
                    catch(InterruptedException e) {
 
-                       e.printStackTrace();
+                       log.warn("Splash delay interrupted", e);
                    }
                }
                //ApplicationLauncher.reportWindow.initWindow();

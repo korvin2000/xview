@@ -12,10 +12,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.j7.commons.base.NotNull;
 import net.j7.commons.io.*;
@@ -25,6 +29,8 @@ import net.j7.commons.io.SysInfo.OSFamily;
 
 
 public class LibraryLoader {
+
+	private static final Logger log = LoggerFactory.getLogger(LibraryLoader.class);
 
 	/**
 	 * Lazy-loaded Singleton, by Bill Pugh *.
@@ -74,8 +80,8 @@ public class LibraryLoader {
 	private LibraryLoader() {
 		SysInfo si = SysInfo.instance();
 		os = si.getOS();
+		model = si.getDataModel(); // before getArch(), which maps 64-bit names for a 32-bit JVM (B6)
 		arch = getArch();
-		model = si.getDataModel();
 		basePath = getPath();
 	}
 
@@ -130,6 +136,7 @@ public class LibraryLoader {
 
 		if (val.equals ("IA64N")) val = "ia64_32"; //$NON-NLS-1$ $NON-NLS-2$
 		if (val.equals ("IA64W")) val = "ia64"; //$NON-NLS-1$ $NON-NLS-2$
+		if ("arm64".equals(val)) val = "aarch64"; // some JVMs report arm64; the native dir is always aarch64
 
 
 		ArchVM vm = dmod.get(val);
@@ -150,13 +157,77 @@ public class LibraryLoader {
 	}
 
 	public String getJARPath(String libraryName, String root) {
-		StringBuilder sb = new StringBuilder();
-		sb.append(root).append("libs");
-		sb.append('/').append(basePath);
-		sb.append('/').append(arch);
-		sb.append('/').append(libraryName);
-		sb.append('.').append(getExt());
-		return sb.toString();
+		return libDir(root) + libraryName + '.' + getExt();
+	}
+
+	/** {@code <root>libs/<os>/<arch>/} */
+	private String libDir(String root) {
+		return root + "libs/" + basePath + '/' + arch + '/';
+	}
+
+	/** The source location of a library file ({@code <location>/libs/<os>/<arch>/<fileName>}). */
+	private String sourceOf(String fileName) {
+		return libDir(getLibPath()) + fileName;
+	}
+
+	/** The persistent cache file of a library file ({@code <AppDataDir>/libs/<os>/<arch>/<fileName>}). */
+	private Path cacheOf(String fileName) {
+		return Paths.get(FilePath.as().dir(SysInfo.instance().getAppDataDir(appName)).file(libDir("/") + fileName).build());
+	}
+
+	/** Load name → chosen file name ({@code stem.ext}), memoized per JVM. */
+	private final Map<String, String> fileNames = new HashMap<>();
+
+	/**
+	 * The file ({@code stem.ext}) behind a load name (PLAN P5.2). Windows: always {@code <name>.dll}, as before.
+	 * Unix also tries {@code lib<name>} when the name lacks the prefix (e.g. {@code turbojpeg} → {@code libturbojpeg.so});
+	 * macOS tries {@code .dylib} before {@code .jnilib}, and only {@code .dylib} for JNA libraries.
+	 * A candidate present in the source wins over one present only in the cache, so a stale cache file never shadows a
+	 * new source file; with neither, the first candidate is the one reported as missing.
+	 */
+	private String fileName(String name, boolean jna) {
+		String known = fileNames.get(name);
+		if (null != known) return known;
+		List<String> candidates = fileCandidates(name, jna);
+		String chosen = null;
+		if (candidates.size() > 1) {
+			for (String candidate : candidates) {
+				if (sourceExists(candidate)) { chosen = candidate; break; }
+			}
+			if (null == chosen) {
+				for (String candidate : candidates) {
+					if (Files.isRegularFile(cacheOf(candidate))) { chosen = candidate; break; }
+				}
+			}
+		}
+		if (null == chosen) chosen = candidates.get(0);
+		fileNames.put(name, chosen);
+		return chosen;
+	}
+
+	/** Candidate file names in preference order: name-major ({@code name.ext1, name.ext2, libname.ext1, …}). */
+	List<String> fileCandidates(String name, boolean jna) {
+		List<String> exts = OS.MacOS == os ? (jna ? List.of("dylib") : List.of("dylib", "jnilib")) : List.of(getExt());
+		List<String> stems = new ArrayList<>(2);
+		stems.add(name);
+		if (OSFamily.Unix == os.family() && !name.startsWith("lib")) stems.add("lib" + name);
+		List<String> candidates = new ArrayList<>(stems.size() * exts.size());
+		for (String stem : stems) {
+			for (String ext : exts) candidates.add(stem + '.' + ext);
+		}
+		return candidates;
+	}
+
+	/** @return true if the source has this file (a readable local file, or an openable URL/classpath resource). */
+	private boolean sourceExists(String fileName) {
+		String source = sourceOf(fileName);
+		if (null != localFile(source)) return true;
+		if (source.startsWith("file:")) return false;
+		try (InputStream in = fromURL(source)) {
+			return null != in;
+		} catch (IOException e) {
+			return false;
+		}
 	}
 
 	/** Per-JVM state of a library name: no source and no cache / available on disk / System.load-ed. */
@@ -183,14 +254,14 @@ public class LibraryLoader {
 	 * for {@code load == false} only points the JNA search path at its directory.
 	 * <p>
 	 * Synchronized (re-entrant) because {@code System.load} may run JNI_OnLoad code that calls back into the loader.
-	 * A missing library is a soft failure: it is reported once on stderr and {@code false} is returned.
+	 * A missing library is a soft failure: it is reported once as a warning and {@code false} is returned.
 	 */
 	private synchronized boolean load(String name, boolean load) {
 		if (!swept) {
 			swept = true;
 			sweepStale();
 		}
-		Path path = resolve(name);
+		Path path = resolve(name, !load);
 		if (path == null) return false;
 		if (load) {
 			if (State.LOADED != states.get(name)) {
@@ -201,7 +272,8 @@ public class LibraryLoader {
 					if (Files.exists(path)) throw e; // state stays COPIED -> retried on a later call
 					states.remove(name);
 					paths.remove(name);
-					path = resolve(name);
+					fileNames.remove(name);
+					path = resolve(name, false);
 					if (path == null) return false;
 					System.load(path.toString());
 				}
@@ -216,35 +288,36 @@ public class LibraryLoader {
 	}
 
 	/**
-	 * {@link #prepare(String)} plus the Windows dependencies of {@code name}. A library is kept in the same directory
+	 * {@link #prepare(String, boolean)} plus the Windows dependencies of {@code name}. A library is kept in the same directory
 	 * as its dependencies: if a dependency had to fall back to the source directory, the library is taken from there too.
 	 */
-	private Path resolve(String name) {
+	private Path resolve(String name, boolean jna) {
 		boolean dependencyOutsideCache = false;
 		if (OSFamily.Windows.equals(os.family())) {
 			for (String dependency : WINDOWS_DEPENDENCIES.getOrDefault(name, NO_DEPENDENCIES)) {
-				Path dependencyPath = prepare(dependency);
+				Path dependencyPath = prepare(dependency, false);
 				if (null != dependencyPath && !dependencyPath.equals(cachePath(dependency))) dependencyOutsideCache = true;
 			}
 		}
-		Path path = prepare(name);
+		Path path = prepare(name, jna);
 		if (null != path && dependencyOutsideCache && path.equals(cachePath(name))) {
-			Path sourceFile = localFile(getJARPath(name, getLibPath()));
+			Path sourceFile = localFile(sourceOf(fileName(name, jna)));
 			if (null != sourceFile) {
 				path = sourceFile;
 				paths.put(name, path);
 			} else {
-				System.err.println("native library " + name + " is loaded from the cache although a dependency came from the source directory");
+				log.warn("native library {} is loaded from the cache although a dependency came from the source directory", name);
 			}
 		}
 		return path;
 	}
 
 	/** Returns the file to load for {@code name} (normally the cache file), or null if unavailable; memoized per JVM. */
-	private Path prepare(String name) {
+	private Path prepare(String name, boolean jna) {
 		State state = states.get(name);
 		if (State.MISSING == state) return null;
 		if (null != state) return paths.get(name);
+		fileName(name, jna); // pick the file once; cachePath/ensureCached use the memoized choice
 		Path path = ensureCached(name);
 		states.put(name, null == path ? State.MISSING : State.COPIED);
 		if (null != path) paths.put(name, path);
@@ -275,19 +348,19 @@ public class LibraryLoader {
 	 */
 	private Path ensureCached(String name) {
 		Path target = cachePath(name);
-		String source = getJARPath(name, getLibPath());
+		String source = sourceOf(fileName(name, false));
 		Path sourceFile = localFile(source);
 		boolean cached = Files.isRegularFile(target);
 		if (cached && !readable(target)) {
 			// an unreadable cache file is treated as stale: replace it, or fall back to the source below
-			System.err.println("native library cache file not readable: " + target);
+			log.warn("native library cache file not readable: {}", target);
 		} else if (cached) {
 			Boolean same;
 			try {
 				same = sameContent(source, sourceFile, target);
 			} catch (IOException e) {
 				// the cache was just readable, so the source cannot be read (permissions, locks): keep using the cache
-				System.err.println("native library source not readable, using cached file " + target + ": " + e);
+				log.warn("native library source not readable, using cached file {}: {}", target, e.toString());
 				return target;
 			}
 			if (null == same || same) return target; // up to date, or no source to compare with
@@ -295,22 +368,23 @@ public class LibraryLoader {
 		try {
 			if (publish(source, sourceFile, target)) return target;
 		} catch (IOException e) {
-			System.err.println("native library cache update failed for " + target + ": " + e);
+			log.warn("native library cache update failed for {}: {}", target, e.toString());
 		}
 		if (null != sourceFile) {
-			System.err.println("native library cache not updated, loading from source: " + sourceFile);
+			log.warn("native library cache not updated, loading from source: {}", sourceFile);
 			return sourceFile;
 		}
 		if (cached) {
-			System.err.println("native library cache not updated, using existing file: " + target);
+			log.warn("native library cache not updated, using existing file: {}", target);
 			return target;
 		}
-		System.err.println("doesn't exist: " + source);
+		log.warn("doesn't exist: {}", source);
 		return null;
 	}
 
+	/** The cache file of a load name; {@link #fileName(String, boolean)} has already been chosen by {@link #prepare}. */
 	private Path cachePath(String name) {
-		return Paths.get(getFSPath(appName, name).build());
+		return cacheOf(fileName(name, false));
 	}
 
 	/** @return true if the file's content can actually be read (detects permission and lock problems). */
@@ -359,17 +433,17 @@ public class LibraryLoader {
 		Path tmp = target.resolveSibling(target.getFileName() + "." + ProcessHandle.current().pid() + "-" + System.nanoTime() + ".tmp");
 		try {
 			if (null != sourceFile) {
-				System.out.println("copying native library: " + source + " -> " + target);
+				log.info("copying native library: {} -> {}", source, target);
 				Files.copy(sourceFile, tmp);
 				if (Files.mismatch(sourceFile, tmp) != -1L) throw new IOException("copy verification failed: " + tmp);
 			} else {
 				try (InputStream is = fromURL(source)) {
 					if (null == is) return false;
-					System.out.println("copying native library: " + source + " -> " + target);
+					log.info("copying native library: {} -> {}", source, target);
 					Files.copy(is, tmp); // a failure mid-stream throws, so a partial file is never published
 				}
 			}
-			chmod("755", tmp.toString());
+			makeExecutable(tmp);
 			if (moveIntoPlace(tmp, target)) return true;
 			// another instance may have published the same content in the meantime
 			return Files.isRegularFile(target) && Files.mismatch(tmp, target) == -1L;
@@ -426,14 +500,13 @@ public class LibraryLoader {
 		} catch (IOException ignore) {}
 	}
 
-	void chmod(String permision, String path) {
-		if (!OSFamily.Unix.equals(this.os.family())) return; //$NON-NLS-1$
-		try {
-			Runtime.getRuntime ().exec (new String []{"chmod", permision, path}).waitFor(); //$NON-NLS-1$
-		} catch (Throwable e) {}
+	/** rwxr-xr-x on Unix, like the former {@code chmod 755}, without spawning a process (dlopen itself only needs read). */
+	void makeExecutable(Path file) {
+		if (!OSFamily.Unix.equals(this.os.family())) return;
+		File f = file.toFile();
+		f.setReadable(true, false);
+		f.setExecutable(true, false);
 	}
-
-
 
 	public static void loadLibrary(String name) {
 		checkLibrary(name, true);
@@ -441,6 +514,15 @@ public class LibraryLoader {
 
 	public static void checkLibrary(String name, boolean load) {
 		LibraryLoader.instance().load(name, load);
+	}
+
+	/**
+	 * Like {@link #loadLibrary(String)}, but tells the caller whether the library is now loaded, so it can fail fast
+	 * (used by the patched stock-SWT {@code Library}, whose callers rely on an {@link UnsatisfiedLinkError}).
+	 * @return false if the library is unavailable (missing in the source and in the cache)
+	 */
+	public static boolean tryLoadLibrary(String name) {
+		return LibraryLoader.instance().load(name, true);
 	}
 
 	private static String fixBs(String str) {
@@ -457,20 +539,29 @@ public class LibraryLoader {
 	}
 
 
+	/** System property that overrides the natives source {@code location} (PLAN P1.9). */
+	public static final String LOCATION_PROPERTY = "xview.libs.location";
+	/** Environment variable that overrides the natives source {@code location}, below the system property. */
+	public static final String LOCATION_ENV = "XVIEW_LIBS_LOCATION";
+
+	/**
+	 * The natives source root, ending with '/'. Precedence: {@value #LOCATION_PROPERTY} system property,
+	 * {@value #LOCATION_ENV} environment variable, {@code location} in {@code /libs.properties}, then the jar that
+	 * contains {@code libs.properties}; "" if none (cache only). Values are a directory path or a
+	 * {@code file:}/{@code jar:}/{@code http(s):} URL.
+	 */
 	private static String getLocations() {
+		String override = System.getProperty(LOCATION_PROPERTY);
+		if (override == null || override.isBlank()) override = System.getenv(LOCATION_ENV);
+		if (override != null && !override.isBlank()) return toLocation(override.trim());
+
 		URL libUrl = LibraryLoader.class.getResource("/libs.properties");
 		if (libUrl == null) return "";
         try(InputStream isLibs  = libUrl.openStream()) {
 			Properties props = new Properties();
 			props.load(isLibs);
 			String loc = props.getProperty("location");
-			if (loc != null && !loc.isEmpty()) {
-				if (loc.startsWith("file:") || loc.startsWith("jar:") || loc.startsWith("http")) {
-					return fixBs(loc);
-				} else {
-					return Paths.get(loc).toUri().toString();
-				}
-			}
+			if (loc != null && !loc.isEmpty()) return toLocation(loc);
 
 		} catch (IOException ignore) {}
 		String loc = libUrl.toExternalForm();
@@ -478,17 +569,9 @@ public class LibraryLoader {
 		return (idx >= 0) ? loc.substring(0, idx+5) + '/' : "";
 	}
 
-	public static void main(String[] args) {
-		//jar:file:/D:/workspace/j7project/commontools/xanderView/target/xanderview-j7-1.0.0.jar!/dummy.cl
-		System.out.println(">>>>>"+LibraryLoader.getLocations());
-		File a = new File("W:\\avif\\good\\1.0.4\\libavif.dll");
-		System.out.println("1]"+a.getPath());
-		System.out.println("2]"+a.getParent());
-		System.out.println("3]"+a.getParentFile().toString());
-
-		LibraryLoader.loadLibrary("liblz4-java");
-//		LibraryLoader.loadLibrary("lib7-Zip-JBinding");
-//		LibraryLoader.loadLibrary("liblz4-java");
+	private static String toLocation(String loc) {
+		if (loc.startsWith("file:") || loc.startsWith("jar:") || loc.startsWith("http")) return fixBs(loc);
+		return fixBs(Paths.get(loc).toUri().toString()); // toUri() omits the trailing '/' for a missing directory
 	}
 
 }

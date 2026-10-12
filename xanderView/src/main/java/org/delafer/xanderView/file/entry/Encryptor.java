@@ -14,9 +14,14 @@ import org.delafer.xanderView.gui.config.ApplConfiguration;
 
 import net.j7.commons.io.FileUtils;
 import net.j7.commons.utils.ByteUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class Encryptor {
+
+	private static final Logger log = LoggerFactory.getLogger(Encryptor.class);
+
 	private static final int ALG_TYPE_BYTES = 1;
 	private static final int NAME_LENGTH_BYTES = 2;
 	private static final int FILE_LENGTH_BYTES = 4;
@@ -55,7 +60,7 @@ public class Encryptor {
 			//			SecretKey key = f.generateSecret(sks);
 			r.init(mode ? Cipher.ENCRYPT_MODE : Cipher.DECRYPT_MODE, sks);
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Can't initialize cipher", e);
 		}
 		return r;
 	}

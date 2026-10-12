@@ -16,7 +16,7 @@ Only the app runs maven-shade. Its shaded jar is runnable: `Main-Class: org.dela
 ## 2. Startup sequence
 ```
 MainEntryPoint.main(args)
- ├─ PlatformLaunch.relaunchIfNeeded  → macOS without -XstartOnFirstThread / Linux Wayland without GDK_BACKEND:
+ ├─ PlatformLaunch.relaunchIfNeeded  → Windows classpath launch without the sun.awt.windows export / macOS without -XstartOnFirstThread / Linux Wayland without GDK_BACKEND:
  │                                     start the app again with it, exit with its code (PLAN P5.4)
  ├─ System props: sun.java2d.uiScale=1, dpiaware=false
  ├─ Shutdown.addHook()                 → on exit: config.save, OrientationStore.save, CopyLogger.flush,

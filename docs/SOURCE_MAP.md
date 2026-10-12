@@ -12,7 +12,7 @@
 | [MainWindow](../xanderView/src/main/java/org/delafer/xanderView/gui/MainWindow.java) | 480 | A | SWT Display/shell setup, menu, SWT_AWT embedding, **all key bindings** (`bindKeyEvent`, `SWT.*` constants and chars), event loop |
 | [ImageLoader](../xanderView/src/main/java/org/delafer/xanderView/gui/ImageLoader.java) | 153 | A | Base of MainWindow. Decodes an entry (TurboJPEG/ImageIO), builds the caption, hands the image to the canvas |
 | [ImageCanvas](../xanderView/src/main/java/org/delafer/xanderView/gui/ImageCanvas.java) | 313 | A | AWT Canvas. Fit/zoom/pan/gamma/orientation state, `preRenderImage` pipeline, caption painting |
-| [PlatformLaunch](../xanderView/src/main/java/org/delafer/xanderView/gui/PlatformLaunch.java) | 120 | A | First step of `main`: relaunches once with `-XstartOnFirstThread` (macOS) or `GDK_BACKEND=x11` (Linux under Wayland) when missing |
+| [PlatformLaunch](../xanderView/src/main/java/org/delafer/xanderView/gui/PlatformLaunch.java) | 135 | A | First step of `main`: relaunches once with `--add-exports=java.desktop/sun.awt.windows` (Windows classpath launch), `-XstartOnFirstThread` (macOS) or `GDK_BACKEND=x11` (Linux under Wayland) when missing |
 
 ### gui/config — settings and persisted state
 | Class | LOC | St | Role |

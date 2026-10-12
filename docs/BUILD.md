@@ -79,7 +79,7 @@ C:\Program Files\xview\
 java -jar xanderView/target/xanderview-j7-1.0.0.jar "D:\pics\holiday"
 ```
 - No JVM flags are needed with `java -jar` (manifest `Add-Exports` and `Enable-Native-Access`). The old form with `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` still works.
-- From the IDE (classpath launch, the manifest doesn't apply): main class `org.delafer.xanderView.gui.MainEntryPoint`, VM options `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED --enable-native-access=ALL-UNNAMED`.
+- From the IDE (classpath launch, the manifest doesn't apply): main class `org.delafer.xanderView.gui.MainEntryPoint`. Without `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` in the VM options, `PlatformLaunch` restarts the app once with it (a warning says so); add it plus `--enable-native-access=ALL-UNNAMED` to skip the restart and to debug in the same JVM.
 - Linux/macOS: `PlatformLaunch` restarts the app once when needed: with `-XstartOnFirstThread` on macOS, and with `GDK_BACKEND=x11` in a Wayland session on Linux (`SWT_AWT` needs X11). Disable it with `-Dxview.relaunch=false` if your launcher already sets these.
 - Logging: slf4j-simple to stderr at `info`; more detail with `-Dorg.slf4j.simpleLogger.defaultLogLevel=debug` (see `xanderView/src/main/resources/simplelogger.properties`).
 - Prerequisites:

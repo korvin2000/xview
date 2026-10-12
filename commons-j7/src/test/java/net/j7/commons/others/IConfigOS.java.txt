@@ -1,0 +1,52 @@
+package org.delafer.jlead.core;
+
+public interface IConfigOS {
+
+	public enum OSFamily{Windows, Windows9xME, MacOS, Unix, Solaris, Android, OS2, VMS, Z_OS, IBM_I, IBM_VM, NetWare, Unknown };
+
+
+	public enum OS {
+		/* Windows */
+		Windows95,
+		Windows98,
+		WindowsME,
+		WindowsNT,
+		Windows2000,
+		WindowsXP,
+		WindowsVista,
+		WindowsVistaSP2,
+		WindowsSrv2003,
+		Windows7,
+		WindowsSrv2008,
+		Windows8,
+		Windows9,
+		WindowsCE,
+		WindowsUnknown,
+		/* Unix like */
+		Linux,//fast POSIX
+		FreeBSD,//fast POSIX
+		MPE_iX,//POSIX
+		HP_UX,//POSIX
+		AIX,//POSIX
+		Irix,//POSIX
+		OS_390,
+		DigitalUnix,//POSIX
+		Netware,
+		OSF1,
+		SunOS,
+		/* Android */
+		Android_2x,
+		Android_3x,
+		Android_4x,
+		/* Others */
+		Solaris,//POSIX
+		OpenVMS,//POSIX
+		VMSUnknown,//POSIX
+		OS_2,
+		Z_OS,
+		MacOS_X, //POSIX
+		};
+
+	public OSFamily getOSFamily();
+
+}

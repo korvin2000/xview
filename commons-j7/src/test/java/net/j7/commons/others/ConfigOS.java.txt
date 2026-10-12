@@ -1,0 +1,288 @@
+package org.delafer.jlead.core;
+
+import java.io.File;
+import java.io.Serializable;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.util.Locale;
+@SuppressWarnings({ "unchecked", "rawtypes" })
+public final class ConfigOS implements IConfigOS, Serializable {
+
+	private static final String PROPERTY_VM_NAME = "java.vm.name";
+	private static final String PROPERTY_OS_VERSION = "os.version";
+	public static final String PROPERTY_OS_NAME = "os.name";
+
+	private static final long serialVersionUID = -4832865013239798944L;
+
+	private static final transient ConfigOS instance = new ConfigOS();
+
+
+	private static final String EMPTY_LINE = "".intern();
+
+	private String osName;
+	private String osLName;
+	private String osVersion;
+
+	private OSFamily osFamily;
+
+	//default private constructor
+	private ConfigOS() {
+		initialize();
+	}
+
+	private static final String notEmpty(final String v) {
+		return v != null ? v : EMPTY_LINE;
+	}
+
+	private static final boolean isEmpty(final String v) {
+		return v == null || 0 == v.length();
+	}
+
+	private final boolean contains(final String src, final String find) {
+		return src.indexOf(find, 0) >= 0;
+	}
+
+
+	public static final String getEnvProperty(final String property, final String defValue) {
+		String result = null;
+		try
+		{
+			result = AccessController.doPrivileged
+		    (new PrivilegedAction()
+		     {
+		       public Object run()
+		       {
+		    	   return System.getenv(property);
+		       }
+		     }
+		    );
+		} catch (Exception e) {
+			//ignore it
+		}
+
+		if (isEmpty(result)) result = notEmpty(defValue);
+
+		return result;
+	}
+
+	public static final String getSystemProperty(final String property, final String defValue) {
+		String result = null;
+		try
+		{
+			result = AccessController.doPrivileged
+		    (new PrivilegedAction()
+		     {
+		       public Object run()
+		       {
+		    	   return System.getProperty(property);
+		       }
+		     }
+		    );
+		} catch (Exception e) {
+			//ignore it
+		}
+
+		if (isEmpty(result)) result = notEmpty(defValue);
+
+		return result;
+	}
+
+	public String getOSName() {
+		return osName;
+	}
+
+	public String getOSNameLowerCase() {
+		return osLName;
+	}
+
+	public String getOSVersion() {
+		return osVersion;
+	}
+
+	private final void initialize() {
+
+		osName = getSystemProperty(PROPERTY_OS_NAME, "linux");
+		osVersion = getSystemProperty(PROPERTY_OS_VERSION, "");
+
+		osLName = osName.toLowerCase(Locale.ENGLISH);
+
+		initOSFamily();
+
+	}
+
+	public void initOSFamily() {
+		OSFamily family = getOSFamilyIntr();
+		if (OSFamily.Unix.equals(family)) {
+			String vm_name = getSystemProperty(PROPERTY_VM_NAME, "");
+			if ("Dalvik".equalsIgnoreCase(vm_name)) family =  OSFamily.Android;
+		}
+		this.osFamily = family;
+	}
+
+	public OSFamily getOSFamily() {
+		return this.osFamily;
+	}
+
+	private OSFamily getOSFamilyIntr() {
+
+		if (contains(osLName,"windows 9") || contains(osLName,"win9x") || contains(osLName, "windows me")) {
+			return OSFamily.Windows9xME;
+		}
+		if (contains(osLName,"windows")) {
+			return OSFamily.Windows;
+		}
+
+		if (osLName.startsWith("mac os") || osLName.startsWith("darwin")) {
+			return OSFamily.MacOS;
+		}
+
+
+		if (contains(osLName, "nix") || contains(osLName, "nux") || contains(osLName, "aix") || osLName.equals("freebsd")) {
+			return OSFamily.Unix;
+		}
+
+		if (osLName.equals("solaris") || osLName.equals("sunos")) {
+			return OSFamily.Solaris;
+		}
+
+		if (contains(osLName, "openvms")) {
+			return OSFamily.VMS;
+		}
+
+		if (contains(osLName, "os/2")) {
+			return OSFamily.OS2;
+		}
+
+		if (contains(osLName, "netware")) {
+			return OSFamily.NetWare;
+		}
+
+		if (osLName.equals("z/os")) {
+			return OSFamily.Z_OS;
+		}
+
+		if ("/".equals(System.getProperty("file.separator"))) {
+			return OSFamily.Unix;
+		}
+
+		return OSFamily.Unknown;
+
+	}
+
+	public final static ConfigOS instance() {
+		return ConfigOS.instance;
+	}
+
+
+	private void detectOS() {
+
+	}
+
+
+	static Detector[] detectors;
+	static {
+		detectors = new Detector[] {
+
+				new Detector(OS.Windows95, 		DetectType.Equal, 	"windows 95"),
+				new Detector(OS.Windows98, 		DetectType.Equal, 	"windows 98"),
+				new Detector(OS.Windows2000,	DetectType.Preffix, "windows 2000"),
+				new Detector(OS.WindowsXP,		DetectType.Preffix, "windows xp"),
+				new Detector(OS.WindowsME, 		DetectType.Preffix, "windows me"),
+				new Detector(OS.WindowsCE, 		DetectType.Preffix, "windows ce"),
+
+				new Detector(OS.WindowsSrv2003,	DetectType.Preffix, "windows 2003"),
+				new Detector(OS.WindowsSrv2008,	DetectType.Preffix, "windows 2008"),
+
+				new Detector(OS.Windows7,		DetectorEnum.Windows7),
+				new Detector(OS.WindowsVista,	DetectorEnum.WindowsVista),
+				new Detector(OS.Windows8,		DetectorEnum.Windows8),
+
+
+
+				new Detector(OS.Netware, 		DetectType.Contain, "netware"),
+				new Detector(OS.OS_2, 			DetectType.Contain, "os/2"),
+				new Detector(OS.OpenVMS,		DetectType.Contain, "openvms"),
+				new Detector(OS.Z_OS,			DetectType.Contain, "z/os"),
+
+				new Detector(OS.Linux, 			DetectType.Contain,  "linux"),
+				new Detector(OS.MPE_iX, 		DetectType.Contain,  "mpe/ix"),
+				new Detector(OS.HP_UX, 			DetectType.Contain,  "hp-ux", "hp ux"),
+				new Detector(OS.AIX, 			DetectType.Preffix,  "aix"),
+				new Detector(OS.FreeBSD, 		DetectType.Preffix,  "freebsd"),
+				new Detector(OS.Irix, 			DetectType.Preffix,  "irix"),
+				new Detector(OS.OS_390, 		DetectType.Contain,  "os/390"),
+				new Detector(OS.DigitalUnix, 	DetectType.Preffix,  "digital unix"),
+				new Detector(OS.OSF1, 			DetectType.Contain,  "osf1"),
+				new Detector(OS.SunOS, 			DetectType.Contain,  "sunos"),
+
+				new Detector(OS.MacOS_X, 		DetectType.Contain,  "mac os x", "darwin", "rhapsody"),
+				//new Detector(OS.UnixUnknown    (OSFamily.Unix,    OSFamily.Unix.getPlatformPartName())
+
+		};
+	}
+
+	public static class Detector {
+
+		Detector(OS os, DetectType type, String... aliases) {
+
+		}
+
+		Detector(OS os, DetectorEnum detector) {
+
+		}
+
+	};
+
+	public enum DetectType {Equal, Contain, Preffix, Suffix, EqualCase, ContainCase};
+
+	public enum DetectorEnum {Android, WindowsVista, Windows7, Windows8};
+
+
+	private IDectector getDetector(DetectorEnum type) {
+		switch (type) {
+		case WindowsVista:
+			return new DetectWin678("vista", "6.0");
+		case Windows7:
+			return new DetectWin678("7", "6.1");
+		case Windows8:
+			return new DetectWin678("8", "6.2");
+		default:
+			return null;
+		}
+	}
+
+
+	private class DetectWin678 implements IDectector {
+
+		private String num;
+		private String ver;
+
+		public DetectWin678(String num, String ver) {
+			this.num = num;
+			this.ver = ver;
+		}
+
+		public boolean detect() {
+		      String os	 = getOSNameLowerCase();
+		      String verOs = getOSVersion();
+		      return contains(os,"windows "+num) ||
+		    		 (contains(os,"windows nt (unknown)") && ver.equals( verOs ));
+		}
+	}
+
+	private static class DetectAndroid implements IDectector {
+
+		@Override
+		public boolean detect() {
+			String vm_name = getSystemProperty(PROPERTY_VM_NAME, "");
+			return vm_name.equalsIgnoreCase("Dalvik");
+		}
+
+	}
+
+
+	private interface IDectector {
+		public boolean detect();
+	}
+
+}

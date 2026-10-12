@@ -1,0 +1,1 @@
+mvn install:install-file -Dfile=.\opencv-460.jar -DgroupId=org.opencv -DartifactId=opencv -Dversion=4.6.0 -Dpackaging=jar

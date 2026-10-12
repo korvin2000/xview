@@ -1,0 +1,20 @@
+Fowler–Noll–Vo hash function / FNV
+MurmurHash2 / MurmurHash
+CityHash
+PJW-32
+VMAC-64
+
+
+SpookyHash
+xxhash
+vhash
+uhash
+fletcher4
+
+
+http://jpountz.github.io/lz4-java/1.3.0/xxhash-benchmark/
+http://habrahabr.ru/post/178955/
+
+
+MAP
+	http://java-performance.info/hashmap-overview-jdk-fastutil-goldman-sachs-hppc-koloboke-trove-january-2015/

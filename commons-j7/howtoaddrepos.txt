@@ -1,0 +1,25 @@
+	<repositories>
+		<repository>
+			<id>jgit-repository</id>
+			<url>https://repo.eclipse.org/content/groups/releases/</url>
+		</repository>
+		<repository>
+			<id>tmatesoft-repository</id>
+			<url>https://maven.tmatesoft.com/content/repositories/releases/</url>
+		</repository>
+		<repository>
+			<id>jenkins-repository</id>
+			<url>http://repo.jenkins-ci.org/releases/</url>
+		</repository>
+		<repository>
+			<id>MavenCentral</id>
+			<name>Maven repository</name>
+			<url>http://repo1.maven.org/maven2</url>
+			<releases>
+				<enabled>true</enabled>
+			</releases>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</repository>
+	</repositories>

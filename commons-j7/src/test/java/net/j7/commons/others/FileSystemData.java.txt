@@ -1,0 +1,172 @@
+package org.delafer.jlead.core;
+
+import java.io.File;
+import java.io.IOException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+@SuppressWarnings({ "unchecked", "rawtypes" })
+public class FileSystemData {
+
+
+
+	 public static Set<String> getDataDirectories(String projectName) {
+		 Set<String> set = new LinkedHashSet();
+
+		 String userHome = System.getProperty("user.home", ".");
+		 String curDir = System.getProperty("user.dir");
+		 //String System.getProperty("java.io.tmpdir");
+
+		    if (isUnix()) {
+		    	set.add(userHome + "/.config/." + projectName.toLowerCase());
+		    	set.add(userHome + "/." + projectName.toLowerCase());
+		    	set.add(userHome + "/.local/share/." + projectName.toLowerCase());
+		    	set.add(curDir + "/config/." + projectName.toLowerCase());
+		    	set.add("/var/local/."+ projectName.toLowerCase());
+		    	set.add("/usr/share/"+ projectName.toLowerCase());
+		    	set.add("/var/tmp/."+ projectName.toLowerCase());
+		    }
+		    else if (isMacOSX()) {
+		    	set.add(userHome + "/Library/Application Support/" + projectName);
+		    	set.add(System.getenv("USER") + "/Library/"+ projectName);
+		    }
+		    else if (isWindowsVista()) {//Vista, 7,8, 2008
+		    	// Windows Vista added a different environment variable for local settings
+		    	set.add(getLocalAppData(userHome) + File.separator +  projectName);
+
+		    	set.add(System.getenv("USERPROFILE")+ File.separator + "."+ projectName);
+
+		    	set.add(userHome + "\\AppData\\LocalLow\\" + projectName);
+
+		    	set.add(getAppData(userHome, "\\AppData\\Roaming") + File.separator+   projectName);
+
+		    	//set.add(userHome + "\\AppData\\" + projectName);
+		    }
+		    else if (isWindowsXP() || isWindows2000()) {//NT, 2000, 2003, XP
+		    	set.add(getAppData(userHome, "\\Application Data") + File.separator +  projectName);
+		    	set.add(userHome + "\\Local Settings\\Application Data\\" + projectName);
+		    	set.add(System.getenv("USERPROFILE"));
+
+		    }
+		    else if (isWindows98() || isWindowsME()) { //95,98,ME
+
+		    	//System.getenv("APPDATA") + fileSeparator() + appName();
+		    	set.add(System.getenv("USERPROFILE"));
+		    	set.add(File.listRoots()[0] + "\\Windows\\Application Data\\" + projectName);
+		    } else {
+		    	try {
+					String path = new File(".").getCanonicalPath();
+					set.add(path+File.separator+projectName);
+				} catch (Exception e) {}
+		    }
+
+		 return set;
+	 }
+
+
+	 private static String getLocalAppData(String userHome) {
+		 String appData = System.getenv("LOCALAPPDATA");
+		 if (StringUtils.isEmptyProperty(appData))
+			 appData = userHome + "\\AppData\\Local";
+		 return appData;
+	 }
+
+	 private static String getAppData(String userHome, String defValues) {
+		 String appData = System.getenv("APPDATA");
+		 if (StringUtils.isEmptyProperty(appData))
+			 appData = userHome +defValues;
+		 return appData;
+	 }
+
+	  /** Get the suggested configuration directory given the operating
+	   *  system.  Follows the convention used by Firefox.
+	   *
+	   *  @param projectName - name of the project
+	   *  @return suggested configuration directory location.  Returns null
+	   *          if the suggested configuration directory cannot be determined
+	   */
+	  public static String getConfigDirectory(String projectName)
+	  {
+	    String userHome = System.getProperty("user.home", ".");
+	    if (isUnix()) {
+		    return userHome + "/." + projectName.toLowerCase();
+	    }
+	    else if (isMacOSX()) {
+	      return userHome + "/Library/Application Support/" + projectName;
+	    }
+	    else if (isWindowsVista()) {
+	      return userHome + "\\AppData\\Roaming\\" + projectName;
+	    }
+	    else if (isWindowsXP() || isWindows2000()) {
+	      return userHome + "\\Application Data\\" + projectName;
+	    }
+	    else if (isWindows98() || isWindowsME()) {
+	      return File.listRoots()[0] + "\\Windows\\Application Data\\" +
+	             projectName;
+	    }
+	    return null;
+	  }
+
+	private static boolean isWindowsXP() {
+		return false;
+	}
+
+	private static boolean isWindowsME() {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	private static boolean isWindows98() {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	private static boolean isWindows2000() {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	private static boolean isWindowsVista() {
+		// TODO Auto-generated method stub
+		return true;
+	}
+
+	private static boolean isMacOSX() {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	private static boolean isUnix() {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	public static String getEmbededDBFile() {
+		return getConfigDirectory("blacklist.db");
+	}
+
+	public static String getWorkingDirectory() {
+		 AccessController.doPrivileged
+		    (new PrivilegedAction()
+		     {
+		       public Object run()
+		       {
+		    	   return null;
+		       }
+		     }
+		    );
+
+		String USER_HOME;
+		boolean osIsWindows = false;
+
+		if (osIsWindows) {
+            USER_HOME = System.getenv("USERPROFILE");
+        } else {
+            USER_HOME = System.getProperty("user.home");
+        }
+
+		return null;
+	}
+}

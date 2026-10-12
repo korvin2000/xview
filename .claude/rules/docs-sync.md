@@ -22,7 +22,7 @@ App paths are relative to `xanderView/src/main/java/org/delafer/xanderView/`.
 | Any `pom.xml`, repository, dependency, plugin | `docs/DEPENDENCIES.md` §1; `docs/BUILD.md` if commands or blockers changed; `tools/javac-check.sh` classpath |
 | `LibraryLoader`, `libs.properties`, any `loadLibrary` call, DLL names | `docs/ARCHITECTURE.md` §6; `docs/DEPENDENCIES.md` §4 |
 | Vendored lib patched, replaced or removed | `docs/DEPENDENCIES.md` §2; `docs/SOURCE_MAP.md` thirddep table |
-| Parent `swt-*` profiles, `thirddep-j7/src/swt-{win32,stock}`, `gui/PlatformLaunch` | `docs/BUILD.md` (SWT flavors); `docs/DEPENDENCIES.md` §2/§4; `docs/ARCHITECTURE.md` §1/§6; `PLAN.md` P5 |
+| Parent `swt-*` profiles, `thirddep-j7/src/swt-stock`, `gui/PlatformLaunch` | `docs/BUILD.md` (SWT flavors); `docs/DEPENDENCIES.md` §2/§4; `docs/ARCHITECTURE.md` §1/§6; `PLAN.md` P5 |
 | Finished or obsoleted a PLAN item; found new debt or a bug | `PLAN.md` (tick it, or add it with evidence `path:line`) |
 | Fixed a PLAN blocker that `tools/javac-check.sh` works around | Remove that workaround from the script and update `docs/BUILD.md` |
 

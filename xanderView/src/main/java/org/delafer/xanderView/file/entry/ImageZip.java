@@ -1,6 +1,7 @@
 package org.delafer.xanderView.file.entry;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.Objects;
@@ -54,10 +55,12 @@ public class ImageZip extends ImageAbstract<Integer> {
 			Long longSize = (Long) archive.getProperty(this.identifier, PropID.SIZE);
 			size = null != longSize ? longSize.intValue() : size;
 		}
-		MyExtractCallback extract = new MyExtractCallback(archive, size);
-		archive.extract(new int[] {identifier}, false, extract);
-		Buf ret =  new Buf(extract.data());
-		return ret;
+		final long len = size;
+		return HelperFS.arenaBuf(arena -> {
+			MemorySegment segment = arena.allocate(len);
+			archive.extract(new int[] {identifier}, false, new MyExtractCallback(archive, segment.asByteBuffer()));
+			return segment;
+		});
 	}
 
 	protected String lastEntryId(ImageAbstract<Integer> ia) {
@@ -116,9 +119,9 @@ public class ImageZip extends ImageAbstract<Integer> {
 //		private byte[] content;
 		private ByteBuffer bb;
 
-		public MyExtractCallback(IInArchive inArchive, long size) {
+		public MyExtractCallback(IInArchive inArchive, ByteBuffer target) {
 			this.inArchive = inArchive;
-			bb = ByteBuffer.allocateDirect((int)size);
+			bb = target;
 
 //			content = new byte[(int)size];
 		}

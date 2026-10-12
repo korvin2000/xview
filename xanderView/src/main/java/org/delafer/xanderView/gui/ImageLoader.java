@@ -41,7 +41,8 @@ public abstract class ImageLoader {
 			String info = Args.fill("%1 [%2/%3]", entry.shortName(),String.valueOf(position[0]),String.valueOf(position[1]));
 
 			loadImage(entry, info, panel);
-		} catch (Exception e) {
+		} catch (Exception | LinkageError e) {
+			// LinkageError: a decoder native (JXL, WebP, AVIF, OpenCV) is missing or unloadable on this platform; the image is skipped instead of killing the UI loop
 			log.error("Can't load image", e);
 		}
 	}
@@ -84,7 +85,8 @@ public abstract class ImageLoader {
 			}
 
 
-		} catch (Exception e) {
+		} catch (Exception | LinkageError e) {
+			// LinkageError: a decoder native (JXL, WebP, AVIF, OpenCV) is missing or unloadable on this platform; the image is skipped instead of killing the UI loop
 			log.error("Can't load image", e);
 		}
 	}
@@ -146,7 +148,8 @@ public abstract class ImageLoader {
 				}
 				BufferedImage img = tjd.decompress8(BufferedImage.TYPE_3BYTE_BGR); //prev.value TYPE_INT_RGB
 				return img;
-			} catch (Exception e) {
+			} catch (Exception | LinkageError e) {
+				// LinkageError: turbojpeg native missing or incompatible (UnsatisfiedLinkError, NoClassDefFoundError); ImageIO still decodes JPEG (PLAN B18)
 				return loadCommonImage(bytes);
 			} finally {
 				if (null != tjd) tjd.close();

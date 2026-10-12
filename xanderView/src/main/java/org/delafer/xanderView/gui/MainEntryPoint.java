@@ -20,10 +20,20 @@ public class MainEntryPoint {
 
 
 	public static void main(String[] args) {
+		// headless diagnostics (docs/NATIVES.md §4, PLAN B10): load every native of the bundle manifest and exit
+		if (args.length > 0 && NativeCheck.OPTION.equals(args[0])) System.exit(NativeCheck.run());
+
 		// first: a missing per-OS prerequisite (macOS main thread, X11 on Wayland) restarts the app (PLAN P5.4)
 		int relaunched = PlatformLaunch.relaunchIfNeeded(args);
 		if (relaunched >= 0) System.exit(relaunched);
 
+		// stock SWT 3.135 autoscales per monitor by default; the vendored 4.527 did not and the AWT side is pinned to 1x,
+		// so keep SWT unscaled too (mixed SWT points / AWT pixels would misplace the embedded canvas and change the
+		// decode denominator). SWT 3.135 refuses autoScale=false while monitor-specific scaling is on, so that is switched
+		// off as well (the JDK launcher already runs the process PerMonitorV2, so coordinates stay raw pixels).
+		// Overridable with -Dswt.autoScale=… -Dswt.autoScale.updateOnRuntime=… for experiments.
+		if (null == System.getProperty("swt.autoScale")) System.setProperty("swt.autoScale", "false");
+		if (null == System.getProperty("swt.autoScale.updateOnRuntime")) System.setProperty("swt.autoScale.updateOnRuntime", "false");
 		System.setProperty("sun.java2d.dpiaware", "false");
 		System.setProperty("prism.allowhidpi", "false");
 		System.setProperty("sun.java2d.win.uiScaleX", "1");

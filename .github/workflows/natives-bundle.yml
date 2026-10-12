@@ -1,0 +1,37 @@
+# Builds the native bundles (docs/NATIVES.md §3) from natives/<platform>.tsv: downloads the upstream assets, verifies
+# every hash, extracts the members, runs the binary checks and uploads the zips as workflow artifacts. Publishing is a
+# manual step: attach all xview-natives-*-<rev>.zip (+ .sha256) to a new GitHub release `natives-<rev>` and set
+# xview.natives.rev / xview.natives.sha256 in the parent pom.
+name: natives-bundle
+on:
+  workflow_dispatch:
+    inputs:
+      rev:
+        description: bundle revision (e.g. 2026.10)
+        required: true
+        default: '2026.10'
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends p7zip-full llvm
+      - name: Bundle all platforms
+        run: |
+          for p in windows-x86_64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+            tools/natives/bundle.sh "$p" --rev "${{ inputs.rev }}"
+          done
+      - name: Check binaries
+        run: |
+          for p in windows-x86_64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+            tools/natives/check-binaries.sh "natives/target/$p"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xview-natives-${{ inputs.rev }}
+          path: |
+            natives/target/*.zip
+            natives/target/*.zip.sha256
+          if-no-files-found: error

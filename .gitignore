@@ -42,3 +42,4 @@ thirddep-j7/src/test/resources/libs/
 *.dylib
 *.jnilib
 *.lib
+devtools/

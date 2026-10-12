@@ -736,7 +736,8 @@ public class SevenZip {
     private static void ensureLibraryIsInitialized() {
     	if (autoInitializationWillOccur) {
     		LibraryLoader.loadLibrary("lib7-Zip-JBinding");
-    		LibraryLoader.loadLibrary("libgcc_s_seh-1");
+    		// xview-patch: libgcc_s_seh-1 is no longer requested: no shipped native imports it (PE import tables, PLAN P7),
+    		// and on Linux/macOS the request only produced a "missing" warning
     		try {
 				initLoadedLibraries();
 			} catch (SevenZipNativeInitializationException e) {

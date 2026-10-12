@@ -226,11 +226,8 @@ public class Encryptor {
 
 		public void close() throws IOException  {
 			if (null != buf) {
-				buf.close();
+				buf.close(); // a bare bb is heap memory or owned by a Buf elsewhere
 				buf = null;
-			} else
-			if (null != bb) {
-				HelperFS.closeDirectBuffer(bb);
 			}
 			this.bb = null;
 		}

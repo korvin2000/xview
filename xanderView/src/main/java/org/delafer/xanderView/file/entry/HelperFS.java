@@ -2,14 +2,12 @@ package org.delafer.xanderView.file.entry;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,76 +28,45 @@ public class HelperFS {
 		return file != null && !isAnyDirectory(file);
 	}
 
+	/** Maps [0, size) of the file read-only (size < 0 or past EOF: the whole file) until the returned Buf is closed. */
 	public final static Buf readDataBuf(String fileName, int size) throws IOException {
-
-		final RandomAccessFile fis = new RandomAccessFile(fileName, "r");
-		final FileChannel fc = fis.getChannel();
-		final long fileSize = fc.size();
-		// size < 0 means "map the whole file"; otherwise never map past EOF - a read-only
-		// mapping larger than the file fails on some platforms. A file shorter than the
-		// requested hash window is simply mapped in full, which yields the same hash.
-		if (size < 0 || size > fileSize) {
-			size = (int) fileSize;
-		}
-
-		MappedByteBuffer buf = null;
-		try {
-			buf = fc.map(MapMode.READ_ONLY, 0, size);
-		} catch (java.io.IOException e) {
+		// The channel may close right away: a mapping does not depend on it.
+		try (FileChannel fc = FileChannel.open(Path.of(fileName), StandardOpenOption.READ)) {
+			final long fileSize = fc.size();
+			// size < 0 means "map the whole file"; otherwise never map past EOF - a read-only
+			// mapping larger than the file fails on some platforms. A file shorter than the
+			// requested hash window is simply mapped in full, which yields the same hash.
+			final long len = size < 0 || size > fileSize ? fileSize : size;
+			return arenaBuf(arena -> fc.map(MapMode.READ_ONLY, 0, len, arena));
+		} catch (IOException e) {
 			log.warn("filename: {} size: {}", fileName, size);
 			throw e;
 		}
-
-		return new Buf(buf, fis);
 	}
-
 
 	public final static byte[] readData(String fileName, int size) throws IOException {
-
-		final RandomAccessFile fis = new RandomAccessFile(fileName, "r");
-		final FileChannel fc = fis.getChannel();
-		if (size < 0) {
-			size = (int)fc.size();
+		try (Buf buf = readDataBuf(fileName, size)) {
+			return buf.getArray(false);
 		}
-		MappedByteBuffer buf = fc.map(MapMode.READ_ONLY, 0, size);
-        final byte[] bytes = new byte[size];
-        buf.get(bytes);
-        fc.force(true);
-
-        fis.close();
-        closeDirectBuffer(buf);
-
-        return bytes;
 	}
 
-	@SuppressWarnings("restriction")
-	public static void closeDirectBuffer(ByteBuffer cb) {
-	    if (!cb.isDirect()) return;
-//      java < 9
-//	    try {
-//	    	((sun.nio.ch.DirectBuffer)cb).cleaner().clean();
-//	    } catch(Exception ex) { }
-//	    cb = null;
+	interface SegmentSource {
+		MemorySegment get(Arena arena) throws IOException;
+	}
 
-        try {
-			Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
-			Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
-			unsafeField.setAccessible(true);
-			Object unsafe = unsafeField.get(null);
-			Method invokeCleaner = unsafeClass.getMethod("invokeCleaner", ByteBuffer.class);
-			invokeCleaner.invoke(unsafe, cb);
-        } catch (ReflectiveOperationException e) {
-
-			boolean skip = false;
-			if (e instanceof InvocationTargetException ite && ite.getTargetException() != null) {
-				String msg = ite.getTargetException().getMessage();
-				skip = msg != null && (msg.contains("duplicate") || msg.contains("slice"));
-			}
-			if (!skip) {
-				log.warn("Can't release direct buffer", e);
-			}
-        }
-
+	/**
+	 * Off-heap memory (a file mapping or a native allocation) owned by a shared FFM arena that the returned Buf closes:
+	 * freed (unmapped) deterministically without the terminally deprecated {@code Unsafe.invokeCleaner}; Windows keeps a
+	 * mapped file locked until then. Any thread may close it; access after close throws instead of crashing the JVM.
+	 */
+	static Buf arenaBuf(SegmentSource source) throws IOException {
+		final Arena arena = Arena.ofShared();
+		try {
+			return new Buf(source.get(arena).asByteBuffer(), arena::close);
+		} catch (Throwable t) {
+			arena.close();
+			throw t;
+		}
 	}
 
 	public static int min(long a1, long a2) {

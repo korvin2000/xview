@@ -5,18 +5,28 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.UserDefinedFileAttributeView;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +38,21 @@ import net.j7.commons.io.SysInfo.OS;
 import net.j7.commons.io.SysInfo.OSFamily;
 
 
+/**
+ * Makes native libraries available from {@code <location>/libs/<os>/<arch>/} through a persistent per-user cache
+ * ({@code <AppData>/libs/<os>/<arch>/}) and loads them (JNI: {@code System.load}; JNA: {@code jna.library.path}).
+ * <p>
+ * Two modes (docs/NATIVES.md §4, PLAN P7.2):
+ * <ul>
+ * <li><b>Manifest mode</b>: the source directory carries {@code natives.sha256} ({@code sha256sum} format) and
+ * optionally {@code natives.deps}. The cache is content-addressed: {@code <AppData>/libs/<os>/<arch>/<bundle12>/},
+ * where {@code bundle12} is derived from the manifest. A library is copied on its first use, verified against the
+ * manifest and then trusted (one {@code stat} per start). Bundle directories are immutable, so several installed
+ * versions share one cache root without interference.</li>
+ * <li><b>Legacy mode</b> (no manifest): the flat cache directory with an exact content comparison against the source
+ * on first use per JVM, as before P7.</li>
+ * </ul>
+ */
 public class LibraryLoader {
 
 	private static final Logger log = LoggerFactory.getLogger(LibraryLoader.class);
@@ -170,9 +195,15 @@ public class LibraryLoader {
 		return libDir(getLibPath()) + fileName;
 	}
 
-	/** The persistent cache file of a library file ({@code <AppDataDir>/libs/<os>/<arch>/<fileName>}). */
+	/** The flat (legacy) cache directory {@code <AppDataDir>/libs/<os>/<arch>/}. */
+	private Path legacyCacheDir() {
+		return Paths.get(FilePath.as().dir(SysInfo.instance().getAppDataDir(appName)).file(libDir("/") + "x").build()).getParent();
+	}
+
+	/** The cache file of a file name: the bundle directory in manifest mode, the flat directory otherwise. */
 	private Path cacheOf(String fileName) {
-		return Paths.get(FilePath.as().dir(SysInfo.instance().getAppDataDir(appName)).file(libDir("/") + fileName).build());
+		Path bundle = bundleDir();
+		return (null != bundle ? bundle : legacyCacheDir()).resolve(fileName);
 	}
 
 	/** Load name → chosen file name ({@code stem.ext}), memoized per JVM. */
@@ -182,15 +213,22 @@ public class LibraryLoader {
 	 * The file ({@code stem.ext}) behind a load name (PLAN P5.2). Windows: always {@code <name>.dll}, as before.
 	 * Unix also tries {@code lib<name>} when the name lacks the prefix (e.g. {@code turbojpeg} → {@code libturbojpeg.so});
 	 * macOS tries {@code .dylib} before {@code .jnilib}, and only {@code .dylib} for JNA libraries.
-	 * A candidate present in the source wins over one present only in the cache, so a stale cache file never shadows a
-	 * new source file; with neither, the first candidate is the one reported as missing.
+	 * In manifest mode the first candidate listed in the manifest wins. Otherwise a candidate present in the source wins
+	 * over one present only in the cache, so a stale cache file never shadows a new source file; with neither, the first
+	 * candidate is the one reported as missing.
 	 */
 	private String fileName(String name, boolean jna) {
 		String known = fileNames.get(name);
 		if (null != known) return known;
 		List<String> candidates = fileCandidates(name, jna);
 		String chosen = null;
-		if (candidates.size() > 1) {
+		Manifest manifest = authority();
+		if (null != manifest) {
+			for (String candidate : candidates) {
+				if (manifest.sha256.containsKey(candidate)) { chosen = candidate; break; }
+			}
+		}
+		if (null == chosen && candidates.size() > 1) {
 			for (String candidate : candidates) {
 				if (sourceExists(candidate)) { chosen = candidate; break; }
 			}
@@ -230,23 +268,166 @@ public class LibraryLoader {
 		}
 	}
 
-	/** Per-JVM state of a library name: no source and no cache / available on disk / System.load-ed. */
-	private enum State { MISSING, COPIED, LOADED }
+	/** Per-JVM state of a library name: no source and no cache / available on disk / System.load-ed / System.load failed. */
+	public enum State { MISSING, COPIED, LOADED, FAILED }
+
+	// ---------------------------------------------------------------------------------------------------------------
+	// Manifests (docs/NATIVES.md §3-4)
+
+	/** Manifest file name in {@code libs/<os>/<arch>/}: {@code sha256sum} format, one line per native. */
+	public static final String MANIFEST = "natives.sha256";
+	/** Dependency list in {@code libs/<os>/<arch>/}: {@code <file>: <dep> <dep>…}; a {@code ?} suffix marks an optional dependency. */
+	public static final String DEPS = "natives.deps";
+
+	/** The parsed {@link #MANIFEST} (+ {@link #DEPS}) of one {@code libs/<os>/<arch>/} directory. */
+	static final class Manifest {
+		/** First 12 hex digits of SHA-256 over the manifest text: the bundle id and cache sub-directory. */
+		final String id;
+		/** file name → SHA-256 hex, in manifest order. */
+		final Map<String, String> sha256 = new LinkedHashMap<>();
+		/** file name → dependency file names in load order (optional ones keep their {@code ?} suffix). */
+		final Map<String, List<String>> deps = new LinkedHashMap<>();
+
+		private Manifest(String id) {
+			this.id = id;
+		}
+
+		static Manifest parse(String shaText, String depsText) throws IOException {
+			Manifest m = new Manifest(HexFormat.of().formatHex(sha256(shaText.getBytes(StandardCharsets.UTF_8))).substring(0, 12));
+			for (String raw : shaText.split("\n")) {
+				String line = raw.trim();
+				if (line.isEmpty() || line.startsWith("#")) continue;
+				int sp = line.indexOf(' ');
+				if (sp != 64) throw new IOException("bad manifest line: " + line);
+				String hex = line.substring(0, 64).toLowerCase();
+				String file = line.substring(sp).trim();
+				if (file.startsWith("*")) file = file.substring(1);
+				if (!hex.matches("[0-9a-f]{64}") || !plainFileName(file)) throw new IOException("bad manifest line: " + line);
+				m.sha256.put(file, hex);
+			}
+			if (null != depsText) {
+				for (String raw : depsText.split("\n")) {
+					String line = raw.trim();
+					if (line.isEmpty() || line.startsWith("#")) continue;
+					int colon = line.indexOf(':');
+					if (colon <= 0) throw new IOException("bad dependency line: " + line);
+					String file = line.substring(0, colon).trim();
+					List<String> deps = new ArrayList<>();
+					for (String dep : line.substring(colon + 1).trim().split("\\s+")) {
+						if (dep.isEmpty()) continue;
+						if (!plainFileName(dep.endsWith("?") ? dep.substring(0, dep.length() - 1) : dep)) throw new IOException("bad dependency line: " + line);
+						deps.add(dep);
+					}
+					m.deps.put(file, deps);
+				}
+			}
+			return m;
+		}
+
+		static boolean plainFileName(String file) {
+			return !file.isEmpty() && !file.equals(".") && !file.equals("..") && file.indexOf('/') < 0 && file.indexOf('\\') < 0 && file.indexOf(':') < 0;
+		}
+	}
+
+	private boolean manifestsRead;
+	/** The manifest packed into the application jar (classpath {@code /libs/<os>/<arch>/natives.sha256}), or null. */
+	private Manifest expected;
+	/** The manifest found in the source directory, or null (legacy mode). */
+	private Manifest source;
+	/** The manifest files are verified against: the source's own in override mode, else the jar's. Null in legacy mode. */
+	private Manifest authority;
+	private Path bundleDir;
+
+	private synchronized void readManifests() {
+		if (manifestsRead) return;
+		manifestsRead = true;
+		String libs = libDir("/");
+		expected = readManifest(() -> LibraryLoader.class.getResourceAsStream(libs + MANIFEST), () -> LibraryLoader.class.getResourceAsStream(libs + DEPS), "classpath:" + libs);
+		source = readManifest(() -> openSource(MANIFEST), () -> openSource(DEPS), sourceOf(""));
+		if (null == source) {
+			if (null != expected) log.info("natives source {} has no {}: legacy mode (content comparison)", sourceOf(""), MANIFEST);
+			return;
+		}
+		boolean override = null != overrideLocation();
+		if (null != expected && !expected.id.equals(source.id)) {
+			if (override) {
+				log.warn("natives override in effect: {} (bundle {}) differs from the manifest packed in the jar (bundle {})", sourceOf(""), source.id, expected.id);
+			} else {
+				log.error("natives at {} (bundle {}) do not match the manifest packed in the jar (bundle {}): only files matching the jar's manifest are trusted",
+						sourceOf(""), source.id, expected.id);
+			}
+		}
+		authority = (override || null == expected) ? source : expected;
+		bundleDir = legacyCacheDir().resolve(authority.id);
+		log.debug("natives bundle {} from {}", authority.id, sourceOf(""));
+	}
+
+	private interface Opener { InputStream open() throws IOException; }
+
+	private static Manifest readManifest(Opener sha, Opener deps, String where) {
+		String shaText = readText(sha);
+		if (null == shaText) return null;
+		try {
+			return Manifest.parse(shaText, readText(deps));
+		} catch (IOException e) {
+			log.error("ignoring unreadable natives manifest at {}: {}", where, e.getMessage());
+			return null;
+		}
+	}
+
+	private static String readText(Opener opener) {
+		try (InputStream in = opener.open()) {
+			return null == in ? null : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
+	/** Opens {@code <location>/libs/<os>/<arch>/<fileName>}: a local file, or a URL/classpath resource; null if absent. */
+	private InputStream openSource(String fileName) throws IOException {
+		String source = sourceOf(fileName);
+		Path local = localFile(source);
+		if (null != local) return Files.newInputStream(local);
+		if (source.startsWith("file:") || getLibPath().isEmpty()) return null;
+		return fromURL(source);
+	}
+
+	private Manifest authority() {
+		readManifests();
+		return authority;
+	}
+
+	private Path bundleDir() {
+		readManifests();
+		return bundleDir;
+	}
 
 	/**
-	 * Native libraries that must sit next to the requesting library on Windows, because the native loader
-	 * resolves their imports from the requesting DLL's directory (JNA loads with an altered search path).
-	 * They are only copied, never force-loaded, so an unneeded entry has no effect.
+	 * Dependencies that must be loaded before {@code fileName}, from {@link #DEPS} and the built-in map. They are
+	 * {@code System.load}-ed by absolute path first; the dynamic linker then resolves the dependent library's import
+	 * by module name / soname / install name against the already loaded image. Windows: {@code opencv_java460}
+	 * needs {@code concrt140.dll}, which the JDK does not ship (optional: loaded only when the bundle has it).
 	 */
-	private static final Map<String, String[]> WINDOWS_DEPENDENCIES = Map.of(
-			"libavif", new String[] {"libgcc_s_seh-1"});
-	private static final String[] NO_DEPENDENCIES = new String[0];
+	private List<String> dependenciesOf(String fileName) {
+		Set<String> deps = new LinkedHashSet<>();
+		Manifest manifest = authority();
+		if (null != manifest) {
+			List<String> listed = manifest.deps.get(fileName);
+			if (null != listed) deps.addAll(listed);
+		}
+		if (OSFamily.Windows.equals(os.family()) && "opencv_java460.dll".equals(fileName)) deps.add("concrt140.dll?");
+		return new ArrayList<>(deps);
+	}
 
-	/** Leftovers of interrupted copies or replaced, still-mapped libraries older than this are swept. */
+	/** Leftovers of interrupted copies or replaced, still-mapped libraries older than this are swept (legacy directory). */
 	private static final long STALE_MILLIS = 10 * 60 * 1000L;
 
 	private final Map<String, State> states = new HashMap<>();
 	private final Map<String, Path> paths = new HashMap<>();
+	/** File names (dependencies and {@link #checkAll()} subjects) already passed to {@code System.load}. */
+	private final Set<String> loadedFiles = new LinkedHashSet<>();
+	/** File-level outcomes of dependencies and {@link #checkAll()} that have no load name of their own. */
+	private final Map<String, State> fileStates = new HashMap<>();
 	private boolean swept;
 
 	/**
@@ -255,6 +436,7 @@ public class LibraryLoader {
 	 * <p>
 	 * Synchronized (re-entrant) because {@code System.load} may run JNI_OnLoad code that calls back into the loader.
 	 * A missing library is a soft failure: it is reported once as a warning and {@code false} is returned.
+	 * A present but unloadable library throws the {@link UnsatisfiedLinkError} (state {@link State#FAILED}).
 	 */
 	private synchronized boolean load(String name, boolean load) {
 		if (!swept) {
@@ -268,16 +450,17 @@ public class LibraryLoader {
 				try {
 					System.load(path.toString());
 				} catch (UnsatisfiedLinkError e) {
-					// the cache file may be missing for a moment while another instance swaps it: resolve once more
-					if (Files.exists(path)) throw e; // state stays COPIED -> retried on a later call
-					states.remove(name);
-					paths.remove(name);
-					fileNames.remove(name);
-					path = resolve(name, false);
-					if (path == null) return false;
-					System.load(path.toString());
+					Path retry = recover(name, path, e);
+					if (null == retry) return false;
+					try {
+						System.load(retry.toString());
+					} catch (UnsatisfiedLinkError e2) {
+						states.put(name, State.FAILED);
+						throw e2;
+					}
 				}
 				states.put(name, State.LOADED);
+				loadedFiles.add(fileNames.get(name));
 			}
 		} else {
 			String locDir = path.getParent().toString();
@@ -288,28 +471,64 @@ public class LibraryLoader {
 	}
 
 	/**
-	 * {@link #prepare(String, boolean)} plus the Windows dependencies of {@code name}. A library is kept in the same directory
-	 * as its dependencies: if a dependency had to fall back to the source directory, the library is taken from there too.
+	 * After a failed {@code System.load}: the cache file may be missing for a moment while another instance swaps it
+	 * (legacy mode), or a trusted bundle file may be corrupt (manifest mode: re-verified, replaced once).
+	 * @return the path to retry with, or null (unavailable, already warned); rethrows {@code e} for an intact file
+	 */
+	private Path recover(String name, Path path, UnsatisfiedLinkError e) {
+		String fileName = fileNames.get(name);
+		Manifest manifest = authority();
+		if (null != manifest && null != bundleDir && path.startsWith(bundleDir)) {
+			String hash = manifest.sha256.get(fileName);
+			if (null != hash && Files.isRegularFile(path) && hash.equals(sha256Of(path))) {
+				states.put(name, State.FAILED);
+				throw e; // intact but not loadable here: wrong architecture, missing system library, ...
+			}
+			log.warn("native library cache file {} is corrupt or vanished, copying it again", path);
+			try { Files.deleteIfExists(path); } catch (IOException ignore) {}
+		} else if (Files.exists(path)) {
+			states.put(name, State.FAILED);
+			throw e; // state stays FAILED; a later call retries System.load
+		}
+		states.remove(name);
+		paths.remove(name);
+		fileNames.remove(name);
+		return resolve(name, false);
+	}
+
+	/**
+	 * {@link #prepare(String, boolean)} plus the dependencies of the chosen file, which are made available and
+	 * {@code System.load}-ed first (see {@link #dependenciesOf(String)}).
 	 */
 	private Path resolve(String name, boolean jna) {
-		boolean dependencyOutsideCache = false;
-		if (OSFamily.Windows.equals(os.family())) {
-			for (String dependency : WINDOWS_DEPENDENCIES.getOrDefault(name, NO_DEPENDENCIES)) {
-				Path dependencyPath = prepare(dependency, false);
-				if (null != dependencyPath && !dependencyPath.equals(cachePath(dependency))) dependencyOutsideCache = true;
-			}
-		}
 		Path path = prepare(name, jna);
-		if (null != path && dependencyOutsideCache && path.equals(cachePath(name))) {
-			Path sourceFile = localFile(sourceOf(fileName(name, jna)));
-			if (null != sourceFile) {
-				path = sourceFile;
-				paths.put(name, path);
-			} else {
-				log.warn("native library {} is loaded from the cache although a dependency came from the source directory", name);
+		if (null == path) return null;
+		loadDependencies(fileNames.get(name));
+		return path;
+	}
+
+	private void loadDependencies(String fileName) {
+		for (String dep : dependenciesOf(fileName)) {
+			boolean optional = dep.endsWith("?");
+			String depFile = optional ? dep.substring(0, dep.length() - 1) : dep;
+			if (loadedFiles.contains(depFile)) continue;
+			Path depPath = prepareFile(depFile, optional);
+			if (null == depPath) {
+				if (!optional) {
+					fileStates.put(depFile, State.MISSING);
+					log.warn("dependency {} of native library {} is unavailable", depFile, fileName);
+				}
+				continue;
+			}
+			loadDependencies(depFile);
+			try {
+				System.load(depPath.toString());
+				loadedFiles.add(depFile);
+			} catch (UnsatisfiedLinkError e) {
+				fileStates.put(depFile, State.FAILED);
+				log.warn("dependency {} of native library {} failed to load: {}", depFile, fileName, e.getMessage());
 			}
 		}
-		return path;
 	}
 
 	/** Returns the file to load for {@code name} (normally the cache file), or null if unavailable; memoized per JVM. */
@@ -317,11 +536,16 @@ public class LibraryLoader {
 		State state = states.get(name);
 		if (State.MISSING == state) return null;
 		if (null != state) return paths.get(name);
-		fileName(name, jna); // pick the file once; cachePath/ensureCached use the memoized choice
-		Path path = ensureCached(name);
+		String fileName = fileName(name, jna); // pick the file once; cachePath/ensureCached use the memoized choice
+		Path path = prepareFile(fileName, false);
 		states.put(name, null == path ? State.MISSING : State.COPIED);
 		if (null != path) paths.put(name, path);
 		return path;
+	}
+
+	/** The file to load for an exact file name: manifest mode → bundle file, legacy mode → flat cache file; null if unavailable. */
+	private Path prepareFile(String fileName, boolean quiet) {
+		return null != authority() ? ensureBundled(fileName, quiet) : ensureCachedFile(fileName, quiet);
 	}
 
 	private static String appName = "xanderView";
@@ -338,6 +562,93 @@ public class LibraryLoader {
         }
     }
 
+	// ---------------------------------------------------------------------------------------------------------------
+	// Manifest mode: content-addressed bundle directory
+
+	/**
+	 * Manifest mode: returns {@code <bundleDir>/<fileName>}, copying it from the source on first use. The copy is
+	 * written to a sibling temp file, verified against the manifest's SHA-256 and moved into place atomically; a file
+	 * that is already there was verified by whoever published it and is trusted. Null if the file is not listed in the
+	 * manifest, missing in the source, or fails verification (logged unless {@code quiet}).
+	 */
+	private Path ensureBundled(String fileName, boolean quiet) {
+		Manifest manifest = authority();
+		Path target = bundleDir.resolve(fileName);
+		if (Files.isRegularFile(target)) return target;
+		String hash = manifest.sha256.get(fileName);
+		if (null == hash) {
+			if (!quiet) log.warn("native library {} is not listed in the natives manifest (bundle {})", fileName, manifest.id);
+			return null;
+		}
+		String source = sourceOf(fileName);
+		Path sourceFile = localFile(source);
+		Path tmp = null;
+		try {
+			Files.createDirectories(bundleDir);
+			tmp = target.resolveSibling(target.getFileName() + "." + ProcessHandle.current().pid() + "-" + System.nanoTime() + ".tmp");
+			if (null != sourceFile) {
+				Files.copy(sourceFile, tmp);
+			} else {
+				try (InputStream is = openSource(fileName)) {
+					if (null == is) {
+						if (!quiet) log.warn("doesn't exist: {}", source);
+						return null;
+					}
+					Files.copy(is, tmp);
+				}
+			}
+			String actual = sha256Of(tmp);
+			if (!hash.equals(actual)) throw new IOException("checksum mismatch for " + source + ": expected " + hash + ", got " + actual);
+			makeExecutable(tmp);
+			removeQuarantine(tmp);
+			log.info("native library verified and cached: {} -> {}", source, target);
+			try {
+				Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+			} catch (FileAlreadyExistsException | AccessDeniedException e) {
+				if (!Files.isRegularFile(target)) throw e; // another instance published the same verified content meanwhile
+			}
+			return target;
+		} catch (IOException e) {
+			if (!quiet) log.warn("native library {} unavailable: {}", fileName, e.toString());
+			return null;
+		} finally {
+			if (null != tmp) try { Files.deleteIfExists(tmp); } catch (IOException ignore) {}
+		}
+	}
+
+	private static byte[] sha256(byte[] data) {
+		try {
+			return MessageDigest.getInstance("SHA-256").digest(data);
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	/** Lower-case SHA-256 hex of a file, or null if unreadable. */
+	static String sha256Of(Path file) {
+		try (InputStream in = Files.newInputStream(file)) {
+			MessageDigest md = MessageDigest.getInstance("SHA-256");
+			byte[] buf = new byte[1 << 16];
+			int n;
+			while ((n = in.read(buf)) > 0) md.update(buf, 0, n);
+			return HexFormat.of().formatHex(md.digest());
+		} catch (IOException | NoSuchAlgorithmException e) {
+			return null;
+		}
+	}
+
+	/** macOS: a copy of a downloaded file may keep the quarantine attribute (clonefile), which blocks dlopen of unsigned libraries. */
+	private void removeQuarantine(Path file) {
+		if (OS.MacOS != os) return;
+		try {
+			UserDefinedFileAttributeView view = Files.getFileAttributeView(file, UserDefinedFileAttributeView.class);
+			if (null != view && view.list().contains("com.apple.quarantine")) view.delete("com.apple.quarantine");
+		} catch (IOException | UnsupportedOperationException ignore) {}
+	}
+
+	// ---------------------------------------------------------------------------------------------------------------
+	// Legacy mode: flat cache directory, exact content comparison
+
 	/**
 	 * Copies the library into the persistent cache when it is missing there or differs from the source
 	 * (exact content comparison, so a rebuilt library of equal size/timestamp is detected too).
@@ -346,9 +657,9 @@ public class LibraryLoader {
 	 * (e.g. the old one is mapped by a running instance); a stale cache file only if there is no other choice;
 	 * null if the library is unavailable.
 	 */
-	private Path ensureCached(String name) {
-		Path target = cachePath(name);
-		String source = sourceOf(fileName(name, false));
+	private Path ensureCachedFile(String fileName, boolean quiet) {
+		Path target = legacyCacheDir().resolve(fileName);
+		String source = sourceOf(fileName);
 		Path sourceFile = localFile(source);
 		boolean cached = Files.isRegularFile(target);
 		if (cached && !readable(target)) {
@@ -378,13 +689,8 @@ public class LibraryLoader {
 			log.warn("native library cache not updated, using existing file: {}", target);
 			return target;
 		}
-		log.warn("doesn't exist: {}", source);
+		if (!quiet) log.warn("doesn't exist: {}", source);
 		return null;
-	}
-
-	/** The cache file of a load name; {@link #fileName(String, boolean)} has already been chosen by {@link #prepare}. */
-	private Path cachePath(String name) {
-		return cacheOf(fileName(name, false));
 	}
 
 	/** @return true if the file's content can actually be read (detects permission and lock problems). */
@@ -444,6 +750,7 @@ public class LibraryLoader {
 				}
 			}
 			makeExecutable(tmp);
+			removeQuarantine(tmp);
 			if (moveIntoPlace(tmp, target)) return true;
 			// another instance may have published the same content in the meantime
 			return Files.isRegularFile(target) && Files.mismatch(tmp, target) == -1L;
@@ -484,9 +791,9 @@ public class LibraryLoader {
 		}
 	}
 
-	/** Deletes leftovers ({@code *.<pid>-<nanos>.tmp}, {@code *.old-<nanos>}) older than {@link #STALE_MILLIS}. */
+	/** Deletes leftovers ({@code *.<pid>-<nanos>.tmp}, {@code *.old-<nanos>}) older than {@link #STALE_MILLIS} in the flat cache directory. */
 	private void sweepStale() {
-		Path dir = Paths.get(getFSPath(appName, "x").build()).getParent();
+		Path dir = legacyCacheDir();
 		if (null == dir || !Files.isDirectory(dir)) return;
 		long limit = System.currentTimeMillis() - STALE_MILLIS;
 		try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
@@ -508,6 +815,9 @@ public class LibraryLoader {
 		f.setExecutable(true, false);
 	}
 
+	// ---------------------------------------------------------------------------------------------------------------
+	// Public API
+
 	public static void loadLibrary(String name) {
 		checkLibrary(name, true);
 	}
@@ -523,6 +833,58 @@ public class LibraryLoader {
 	 */
 	public static boolean tryLoadLibrary(String name) {
 		return LibraryLoader.instance().load(name, true);
+	}
+
+	/** One line per native file for diagnostics (PLAN B10): {@code <file>: <state>}. */
+	public synchronized List<String> report() {
+		readManifests();
+		List<String> lines = new ArrayList<>();
+		lines.add("natives source: " + sourceOf("") + (null == authority ? " (legacy mode, cache " + legacyCacheDir() + ")" : " (bundle " + authority.id + ", cache " + bundleDir + ")"));
+		Map<String, String> byFile = new LinkedHashMap<>();
+		for (Map.Entry<String, State> e : states.entrySet()) byFile.put(fileNames.getOrDefault(e.getKey(), e.getKey()), e.getValue().name());
+		for (String file : loadedFiles) byFile.putIfAbsent(file, State.LOADED.name());
+		for (Map.Entry<String, State> e : fileStates.entrySet()) byFile.putIfAbsent(e.getKey(), e.getValue().name());
+		Manifest listed = null != expected ? expected : authority;
+		if (null != listed) {
+			for (String file : listed.sha256.keySet()) lines.add(file + ": " + byFile.getOrDefault(file, "not requested"));
+			for (Map.Entry<String, String> e : byFile.entrySet()) if (!listed.sha256.containsKey(e.getKey())) lines.add(e.getKey() + ": " + e.getValue() + " (not in manifest)");
+		} else {
+			for (Map.Entry<String, String> e : byFile.entrySet()) lines.add(e.getKey() + ": " + e.getValue());
+		}
+		return lines;
+	}
+
+	/**
+	 * Loads every file of the manifest (the jar's, else the source's) in manifest order, dependencies first, and
+	 * returns the failures ({@code <file>: <reason>}); empty if all natives are loadable. Without a manifest, nothing is
+	 * checked and the single entry explains why. Used by {@code --check-natives} (docs/NATIVES.md §4).
+	 */
+	public synchronized List<String> checkAll() {
+		readManifests();
+		Manifest listed = null != expected ? expected : authority;
+		if (null == listed) return List.of("no natives manifest: nothing to check (legacy mode, source " + sourceOf("") + ")");
+		List<String> failures = new ArrayList<>();
+		for (String file : listed.sha256.keySet()) {
+			Path path = prepareFile(file, false);
+			if (null == path) {
+				fileStates.put(file, State.MISSING);
+				failures.add(file + ": unavailable");
+				continue;
+			}
+			if (loadedFiles.contains(file)) continue;
+			if (file.contains("swt-awt")) {
+				try { System.loadLibrary("jawt"); } catch (Throwable t) { failures.add(file + ": JDK jawt not loadable: " + t.getMessage()); }
+			}
+			loadDependencies(file);
+			try {
+				System.load(path.toString());
+				loadedFiles.add(file);
+			} catch (UnsatisfiedLinkError e) {
+				fileStates.put(file, State.FAILED);
+				failures.add(file + ": " + e.getMessage());
+			}
+		}
+		return failures;
 	}
 
 	private static String fixBs(String str) {
@@ -544,16 +906,22 @@ public class LibraryLoader {
 	/** Environment variable that overrides the natives source {@code location}, below the system property. */
 	public static final String LOCATION_ENV = "XVIEW_LIBS_LOCATION";
 
-	/**
-	 * The natives source root, ending with '/'. Precedence: {@value #LOCATION_PROPERTY} system property,
-	 * {@value #LOCATION_ENV} environment variable, {@code location} in {@code /libs.properties}, then the jar that
-	 * contains {@code libs.properties}; "" if none (cache only). Values are a directory path or a
-	 * {@code file:}/{@code jar:}/{@code http(s):} URL.
-	 */
-	private static String getLocations() {
+	/** The explicit location override ({@value #LOCATION_PROPERTY}, then {@value #LOCATION_ENV}), or null. */
+	private static String overrideLocation() {
 		String override = System.getProperty(LOCATION_PROPERTY);
 		if (override == null || override.isBlank()) override = System.getenv(LOCATION_ENV);
-		if (override != null && !override.isBlank()) return toLocation(override.trim());
+		return (override == null || override.isBlank()) ? null : override.trim();
+	}
+
+	/**
+	 * The natives source root, ending with '/'. Precedence: {@value #LOCATION_PROPERTY} system property,
+	 * {@value #LOCATION_ENV} environment variable, {@code location} in {@code /libs.properties}, the directory of the
+	 * jar that contains {@code libs.properties} if it has a {@code libs/} subdirectory, then that jar itself
+	 * ({@code jar:} URL); "" if none (cache only). Values are a directory path or a {@code file:}/{@code jar:}/{@code http(s):} URL.
+	 */
+	private String getLocations() {
+		String override = overrideLocation();
+		if (override != null) return toLocation(override);
 
 		URL libUrl = LibraryLoader.class.getResource("/libs.properties");
 		if (libUrl == null) return "";
@@ -566,7 +934,13 @@ public class LibraryLoader {
 		} catch (IOException ignore) {}
 		String loc = libUrl.toExternalForm();
 		int idx = loc.lastIndexOf(".jar!");
-		return (idx >= 0) ? loc.substring(0, idx+5) + '/' : "";
+		if (idx < 0) return "";
+		String jar = loc.substring(loc.startsWith("jar:") ? 4 : 0, idx + 4);
+		try {
+			Path dir = Paths.get(new URI(jar)).toAbsolutePath().getParent();
+			if (null != dir && Files.isDirectory(dir.resolve("libs").resolve(basePath).resolve(arch))) return fixBs(dir.toUri().toString());
+		} catch (URISyntaxException | IllegalArgumentException | FileSystemNotFoundException ignore) {}
+		return loc.substring(0, idx + 5) + '/';
 	}
 
 	private static String toLocation(String loc) {
@@ -575,4 +949,3 @@ public class LibraryLoader {
 	}
 
 }
-

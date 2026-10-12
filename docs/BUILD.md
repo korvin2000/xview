@@ -1,14 +1,14 @@
 # Build and run
 
 ## Why it is hard to build
-- **Custom native libraries:** some are built and copied by hand, they are not in git, and they are loaded through the patched vendored libraries. See [DEPENDENCIES §0, §4](DEPENDENCIES.md).
+- **Native libraries:** not in git. Since PLAN P7 they come as hash-pinned per-platform bundles (`natives/<platform>.tsv`, `tools/natives/bundle.sh`, GitHub release `natives-2026.10`) that the build downloads and verifies; a local bundle can be used with `-Dxview.natives.dir=<natives/target/<platform>>`. See [NATIVES.md](NATIVES.md), [DEPENDENCIES §0, §4](DEPENDENCIES.md).
 - **jitpack-only vavi artifacts** and outdated libraries.
 - The small classes-only OpenCV jar is no longer a blocker: it comes from the WPILib Maven repo (PLAN P1.4).
 
 ## Toolchain
-- **JDK 21+** to build and run; every module compiles with `release=21`. The deployed install bundles **BellSoft Liberica JRE 23** (`C:\Program Files\xview\jre`).
-- **Maven:** use the wrapper (`./mvnw`, `mvnw.cmd`). It downloads Maven 3.9.16 once (SHA-256 checked) into `~/.m2/wrapper`. On Unix the wrapper needs `unzip` (otherwise it fetches the `.tar.gz`, which fails the zip checksum). The enforcer rejects JDK < 21 and Maven < 3.9. On the owner's machine IntelliJ also bundles Maven 3.9.16 at `C:\Program Files\JetBrains\IntelliJ IDEA 2023.1\plugins\maven-plugin\lib\maven3\bin\mvn`; JDKs live under `~/.jdks/` (use `temurin-21.0.9`).
-- Platforms: only **Windows x64** runs today. Linux and macOS jars build (see SWT flavors below) but have no natives yet (PLAN P5.3).
+- **JDK 26+** to build and run (class files v70); every module compiles with `release=26` (migrated from 21 in PLAN P6). The deployed install still bundles **BellSoft Liberica JRE 23** (`C:\Program Files\xview\jre`), which cannot run a new jar: replace it with a 26 runtime before deploying one.
+- **Maven:** use the wrapper (`./mvnw`, `mvnw.cmd`). It downloads Maven 3.9.16 once (SHA-256 checked) into `~/.m2/wrapper`. On Unix the wrapper needs `unzip` (otherwise it fetches the `.tar.gz`, which fails the zip checksum). The enforcer rejects JDK < 26 and Maven < 3.9. On the owner's machine IntelliJ also bundles Maven 3.9.16 at `C:\Program Files\JetBrains\IntelliJ IDEA 2023.1\plugins\maven-plugin\lib\maven3\bin\mvn`; JDK 26: `devtools/jdk-26.0.2.1+1` in the repo (untracked; set `JAVA_HOME` to it). IntelliJ 2023.1 predates language level 26; the build itself does not depend on the IDE.
+- Platforms: **Windows x64** runs today. Linux and macOS dist zips build with their natives (see SWT flavors and natives below) but are unverified at runtime (PLAN P7.5); Windows aarch64 is deferred (P7.7).
 
 ## Build (verified 2026-10-12: BUILD SUCCESS)
 ```bash
@@ -29,34 +29,51 @@ The parent pom has one `swt-*` profile per platform. It is selected from the bui
 
 | `-Dswt.flavor=` | SWT Java code | Output dir |
 |---|---|---|
-| `win32.win32.x86_64` (auto on Windows x64) | vendored 4.527 sources, `thirddep-j7/src/swt-win32/` | `target/` |
-| `gtk.linux.x86_64`, `gtk.linux.aarch64` | stock SWT 3.135.0 classes + patched `Library` (`thirddep-j7/src/swt-stock/`) | `target-<flavor>/` |
+| `win32.win32.x86_64` (auto on Windows x64) | stock SWT 3.135.0 classes + patched `Library` (`thirddep-j7/src/swt-stock/`), since P7 | `target/` |
+| `gtk.linux.x86_64`, `gtk.linux.aarch64` | same | `target-<flavor>/` |
 | `cocoa.macosx.x86_64`, `cocoa.macosx.aarch64` | same | `target-<flavor>/` |
 
 ```bash
 ./mvnw -B -DskipTests -Dswt.flavor=gtk.linux.x86_64 package
 ```
-- For the stock flavors, thirddep unpacks `org.eclipse.platform:org.eclipse.swt.<ws>.<os>.<arch>:3.135.0` at build time into its classes **without** the natives, the signature files and the stock `org.eclipse.swt.internal.Library`. The patched `Library` loads every SWT native through `LibraryLoader`, so nothing is extracted from the jar.
+- For every flavor, thirddep unpacks `org.eclipse.platform:org.eclipse.swt.<ws>.<os>.<arch>:3.135.0` at build time into its classes **without** the natives, the signature files and the stock `org.eclipse.swt.internal.Library`. The patched `Library` loads every SWT native through `LibraryLoader`, so nothing is extracted from the jar.
 - Each non-Windows flavor builds into its own `target-<flavor>/`, so flavors never mix classes. IDE builds of a stock flavor need one Maven build first (the unpack step).
 - An unsupported OS/arch fails the enforcer with a hint to pass `-Dswt.flavor`.
 - All flavors share the Maven coordinates of `thirddep-j7` and the app, so the non-Windows flavors skip `install`/`deploy`: `~/.m2` only ever holds the Windows flavor. Build a cross flavor in **one reactor run from the root** (or with `-am`); `-Dswt.flavor=… -pl xanderView` without `-am` would shade the installed Windows thirddep (PLAN B21).
 - Cross-building on Windows was verified for `gtk.linux.x86_64` and `cocoa.macosx.aarch64`: the app compiles against SWT 3.135 and the jars contain no SWT natives.
 
+### Natives bundles and dist zips (PLAN P7)
+Each `swt-*` profile also sets `xview.platform` (`windows-x86_64`, `linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`), `xview.libdir` (`windows/amd64`, `linux/x86_64`, …) and the bundle hash `xview.natives.sha256`. In `generate-resources` the app module downloads `xview-natives-<platform>-<rev>.zip` from the GitHub release `natives-${xview.natives.rev}` (`download-maven-plugin`, SHA-256 verified, cached in `~/.m2`) into `target/natives/`, packs `libs/<os>/<arch>/natives.sha256` + `natives.deps` into the jar as resources, and after shading builds **`xanderview-<version>-<platform>.zip`** (`maven-assembly-plugin`, `src/assembly/dist.xml`): `xanderview.jar`, `libs/<os>/<arch>/…`, `xanderview.cmd` or `xanderview.sh`, a filtered `jrunner.json`, `THIRD-PARTY-NOTICES.md`.
+- The default build downloads the bundle (release `natives-2026.10` is published) and builds the dist zip. `-Dxview.natives.skip=true` builds without natives as before P7 (jar without a manifest, legacy loader mode, no dist zip); the download is cached in `~/.m2/repository/.cache/download-maven-plugin`, so later builds are offline.
+- Local bundle instead of the download (profile `natives-local`): `-Dxview.natives.dir=<absolute path to natives/target/<platform>>` (the directory that contains `libs/`). Build the bundle first:
+```bash
+tools/natives/bundle.sh windows-x86_64 --rev 2026.10
+```
+```bash
+./mvnw -B -DskipTests -Dxview.natives.dir="$PWD/natives/target/windows-x86_64" package
+```
+```bash
+./mvnw -B -DskipTests -Dswt.flavor=gtk.linux.x86_64 -Dxview.natives.dir="$PWD/natives/target/linux-x86_64" package
+```
+- Verified 2026-10-13 on Windows: both commands succeed; the zips contain the natives, the manifests and the launcher (`xanderView/target/xanderview-1.0.0-windows-x86_64.zip`, `xanderView/target-gtk.linux.x86_64/xanderview-1.0.0-linux-x86_64.zip`).
+- Check a dist: unzip it and run `java -jar xanderview.jar --check-natives` (loads every native of the manifest from a cold per-user cache, exit 1 on a problem). CI does this per platform (`.github/workflows/build.yml`); the bundler runs in `natives-bundle.yml`.
+- `tools/natives/check-binaries.sh natives/target/<platform>` (needs LLVM tools) lists imports, glibc floor, macOS minos and JNI export counts.
+
 Jar acceptance checks after a build:
-- **Manifest:** `Main-Class`, `SWT-OS/WS/Arch` of the flavor, `Add-Exports: java.desktop/sun.awt.windows`, `Enable-Native-Access: ALL-UNNAMED`.
+- **Manifest:** `Main-Class`, `SWT-OS/WS/Arch` of the flavor, `Enable-Native-Access: ALL-UNNAMED` (no `Add-Exports` since P7).
 - **`META-INF/services`:** `ImageReaderSpi` lists AVIF, WebP and JXL-JNI; `ImageWriterSpi` lists AVIF and WebP.
-- **Entries present:** `vavi/imageio/WrappedImageInputStream.class`, `org/eclipse/swt/internal/Library.class` (the patched one: `javap -c` shows `LibraryLoader` calls), `libs.properties`; Windows also `org/eclipse/swt/internal/SWTMessages*.properties`.
+- **Entries present:** `vavi/imageio/WrappedImageInputStream.class`, `org/eclipse/swt/internal/Library.class` (the patched one: `javap -c` shows `LibraryLoader` calls), `libs.properties`; Windows also `org/eclipse/swt/internal/SWTMessages*.properties`; with a natives bundle also `libs/<os>/<arch>/natives.sha256`.
 - **No SWT or JXL natives** (`*.dll`, `*.so`, `*.jnilib`, `*.dylib` outside `com/sun/jna/` and lz4's own dirs, which are the documented exceptions in [DEPENDENCIES §4](DEPENDENCIES.md#natives)).
 
 ## Fast compile check without Maven
 ```bash
 bash tools/javac-check.sh
 ```
-It compiles the main sources of commons → thirddep (Windows SWT flavor) → app with `javac --release 21` into a disposable dir (`${TMPDIR:-/tmp}/xview-javac`, or the given path) in about 30 s, using jars from `~/.m2` (run one Maven build first). It refuses to clear a non-empty directory it didn't create. It doesn't cover resources, tests, shading, natives or the stock SWT flavors, so it is not release acceptance.
+It compiles the main sources of commons → thirddep (Windows flavor: the stock SWT 3.135 win32 jar from `~/.m2` + the patched `Library`) → app with `javac --release <maven.compiler.release of the parent pom>` (a JDK of that version: `JAVA_HOME`, `devtools/jdk-<rel>*`, `~/.jdks/*-<rel>*` or `PATH`) into a disposable dir (`${TMPDIR:-/tmp}/xview-javac`, or the given path) in about 30 s, using jars from `~/.m2` (run one Maven build first). It refuses to clear a non-empty directory it didn't create. It doesn't cover resources, tests, shading, natives or the stock SWT flavors, so it is not release acceptance.
 
 ## Pom notes
-- All modules: `maven.compiler.release=21` from the parent; plugin versions pinned in the parent `pluginManagement`; the enforcer runs in every module.
-- No compile-time `--add-exports` are needed (`com.sun.nio.file` is exported by `jdk.unsupported`). The **runtime** export `java.desktop/sun.awt.windows` is required on Windows, because SWT 4.527 `SWT_AWT` reflects into `WEmbeddedFrame`/`WComponentPeer`; it is in the app manifest (`Add-Exports`), which `java -jar` honors. SWT 3.135 gtk/cocoa create the embedded frame through JNI and need no exports.
+- All modules: `maven.compiler.release=26` from the parent; plugin versions pinned in the parent `pluginManagement`; the enforcer runs in every module.
+- No `--add-exports` anywhere since P7: `com.sun.nio.file` is exported by `jdk.unsupported`, and stock SWT 3.135 creates the embedded AWT frame through JNI on every platform (the deleted vendored 4.527 reflected into `sun.awt.windows`).
 - The vavi dependencies: only `com.github.umjammer.vavi-commons:vavi-commons:1.1.14` (jitpack) remains.
 - Logging: `slf4j-api` everywhere, the `slf4j-simple` binding only in the app.
 
@@ -64,12 +81,12 @@ It compiles the main sources of commons → thirddep (Windows SWT flavor) → ap
 ```
 C:\Program Files\xview\
 ├─ xanderview.jar            ← copy of xanderView/target/xanderview-j7-1.0.0.jar
-├─ libs\windows\amd64\*.dll  ← native SOURCE (libs.properties location=C:/Program Files/xview)
+├─ libs\windows\amd64\*.dll  ← native SOURCE, legacy mode (no natives.sha256); configured today via -Dxview.libs.location or XVIEW_LIBS_LOCATION, or by placing the jar next to libs\ (default location since P7)
 ├─ jre\                      ← Liberica JRE 23
 └─ imageViewer.cmd, start23.bat (launchers)
 %APPDATA%\xanderView\libs\windows\amd64\  ← native CACHE
 ```
-- The cache is refreshed automatically when a source DLL's content differs, by exact comparison on first use per JVM.
+- Legacy mode (no `natives.sha256`): the cache is refreshed automatically when a source DLL's content differs, by exact comparison on first use per JVM. Dist zips (manifest mode) use `%APPDATA%\xanderView\libs\windows\amd64\<bundle12>\` instead ([NATIVES.md §4](NATIVES.md)).
 - If a DLL is still loaded by another running instance, the old file is renamed to `*.old-<n>` and swept later.
 - To update a native, replace it in `libs\windows\amd64\` and restart. No manual cache deletion is needed (since the B8 fix).
 - Another natives source can be chosen without rebuilding: `-Dxview.libs.location=<dir or URL>` or the environment variable `XVIEW_LIBS_LOCATION` (both override `libs.properties`).
@@ -78,12 +95,12 @@ C:\Program Files\xview\
 ```bash
 java -jar xanderView/target/xanderview-j7-1.0.0.jar "D:\pics\holiday"
 ```
-- No JVM flags are needed with `java -jar` (manifest `Add-Exports` and `Enable-Native-Access`). The old form with `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` still works.
-- From the IDE (classpath launch, the manifest doesn't apply): main class `org.delafer.xanderView.gui.MainEntryPoint`. Without `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` in the VM options, `PlatformLaunch` restarts the app once with it (a warning says so); add it plus `--enable-native-access=ALL-UNNAMED` to skip the restart and to debug in the same JVM.
+- No JVM flags are needed with `java -jar` (manifest `Enable-Native-Access`); `--add-exports` is not needed any more (P7).
+- From the IDE (classpath launch): main class `org.delafer.xanderView.gui.MainEntryPoint`; add `--enable-native-access=ALL-UNNAMED` to the VM options to silence the JNI warnings. Natives: `-Dxview.libs.location=<dir containing libs/>` (a bundle such as `xanderView/target/natives/<sha256>`, or the deployed `C:\Program Files\xview`); without it a classpath launch is cache-only.
 - Linux/macOS: `PlatformLaunch` restarts the app once when needed: with `-XstartOnFirstThread` on macOS, and with `GDK_BACKEND=x11` in a Wayland session on Linux (`SWT_AWT` needs X11). Disable it with `-Dxview.relaunch=false` if your launcher already sets these.
 - Logging: slf4j-simple to stderr at `info`; more detail with `-Dorg.slf4j.simpleLogger.defaultLogLevel=debug` (see `xanderView/src/main/resources/simplelogger.properties`).
 - Prerequisites:
-  - The native source dir must be reachable (`libs.properties` `location`, or the overrides above), or the cache must already hold the 8 DLLs ([DEPENDENCIES §4](DEPENDENCIES.md#natives)).
+  - The natives must be reachable: `libs/<os>/<arch>/` next to the jar (dist zip), `-Dxview.libs.location`/`XVIEW_LIBS_LOCATION`, or an already filled cache ([DEPENDENCIES §4](DEPENDENCIES.md#natives)). `java -jar xanderview.jar --check-natives` tells which ones load.
   - OpenCV needs the MSVC 2015–2022 x64 runtime.
 - Optional config: `%APPDATA%\xanderView\xander.properties` (sample in `xanderView/src/main/resources/xander.properties`). Set `target.folder` and `cry.keyfile`; the defaults point to `A:\`.
 

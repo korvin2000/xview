@@ -15,7 +15,44 @@
 
 	<!-- <url>http://maven.apache.org</url> -->
 	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+			</resource>
+			<!-- the natives bundle manifest travels inside the jar: the loader's expected set and trust anchor (docs/NATIVES.md §4) -->
+			<resource>
+				<directory>${xview.natives.dir}/libs/${xview.libdir}</directory>
+				<targetPath>libs/${xview.libdir}</targetPath>
+				<includes>
+					<include>natives.sha256</include>
+					<include>natives.deps</include>
+				</includes>
+			</resource>
+		</resources>
 		<plugins>
+			<!-- natives bundle of the active platform (docs/NATIVES.md §3): verified download, unpacked into target/natives/<sha256> (a new bundle never mixes with an old one);
+			     skipped when xview.natives.skip=true or a local tree is given with -Dxview.natives.dir -->
+			<plugin>
+				<groupId>com.googlecode.maven-download-plugin</groupId>
+				<artifactId>download-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>natives-bundle</id>
+						<phase>generate-resources</phase>
+						<goals>
+							<goal>wget</goal>
+						</goals>
+						<configuration>
+							<skip>${xview.natives.skip}</skip>
+							<url>${xview.natives.url}</url>
+							<sha256>${xview.natives.sha256}</sha256>
+							<checkSignature>true</checkSignature>
+							<unpack>true</unpack>
+							<outputDirectory>${xview.natives.dir}</outputDirectory>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -49,9 +86,8 @@
 										<SWT-OS>${swt.os}</SWT-OS>
 										<SWT-WS>${swt.ws}</SWT-WS>
 										<SWT-Arch>${swt.arch}</SWT-Arch>
-										<!-- java -jar needs no flags: SWT_AWT (win32 SWT 4.527) reflects into sun.awt.windows; JDKs without
-										     that package ignore the entry. Enable-Native-Access silences the JNI/FFM warnings (JDK 22+). -->
-										<Add-Exports>java.desktop/sun.awt.windows</Add-Exports>
+										<!-- java -jar needs no flags: Enable-Native-Access silences the JNI/FFM warnings (JDK 22+). The former
+										     Add-Exports java.desktop/sun.awt.windows went with the vendored SWT 4.527 (P7: stock 3.135 uses JNI). -->
 										<Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
 									</manifestEntries>
 								</transformer>
@@ -71,6 +107,30 @@
 									</excludes>
 								</filter>
 							</filters>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+			<!-- per-platform distribution zip: jar + libs/<os>/<arch>/ + launcher + jrunner.json + notices (docs/NATIVES.md §3);
+			     declared after shade so it packs the shaded jar; skipped unless a natives bundle is present -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>dist</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+						<configuration>
+							<skipAssembly>${xview.dist.skip}</skipAssembly>
+							<descriptors>
+								<descriptor>src/assembly/dist.xml</descriptor>
+							</descriptors>
+							<finalName>xanderview-${project.version}-${xview.platform}</finalName>
+							<appendAssemblyId>false</appendAssemblyId>
+							<attach>false</attach>
 						</configuration>
 					</execution>
 				</executions>

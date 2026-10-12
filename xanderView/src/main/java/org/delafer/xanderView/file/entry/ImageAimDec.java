@@ -95,7 +95,7 @@ public class ImageAimDec<E> extends ImageAbstract<E> {
 		ByteBuffer fileContent = buffer.slice().limit(fileSize);
 		buffer.position(buffer.position() + fileSize);
 
-		return new FirstImage(extension, fileSize, crc, new Buf(fileContent, buffer));
+		return new FirstImage(extension, fileSize, crc, new Buf(fileContent));
 	}
 
 	public static FirstImage extractFirstFile(byte[] array) {

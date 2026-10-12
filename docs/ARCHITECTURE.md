@@ -8,15 +8,15 @@ xanderView (app) ──► thirddep-j7 (vendored libs) ──► commons-j7 (uti
       │                    │ provided: jhlabs, commons-j7
       └──► commons-j7      └ compile: vavi-commons (jitpack), jna 5.15
       └──► hppc, jhlabs filters, lz4 1.3 (xxHash), unidecode, opencv-java 4.6.0-5 (WPILib), slf4j-simple
-SWT flavor (parent profiles swt-*): win32 = vendored 4.527 sources (thirddep src/swt-win32);
+SWT flavor (parent profiles swt-*): all flavors = stock 3.135 classes unpacked at build time + the patched Library (thirddep src/swt-stock); natives from the platform bundle (P7)
             gtk/cocoa = stock 3.135 classes unpacked into thirddep + patched Library (src/swt-stock)
 ```
-Only the app runs maven-shade. Its shaded jar is runnable: `Main-Class: org.delafer.xanderView.gui.MainEntryPoint`, `Add-Exports: java.desktop/sun.awt.windows`, `Enable-Native-Access: ALL-UNNAMED`, and the flavor's `SWT-OS/WS/Arch`.
+Only the app runs maven-shade. Its shaded jar is runnable: `Main-Class: org.delafer.xanderView.gui.MainEntryPoint`, `Enable-Native-Access: ALL-UNNAMED`, and the flavor's `SWT-OS/WS/Arch`.
 
 ## 2. Startup sequence
 ```
 MainEntryPoint.main(args)
- ├─ PlatformLaunch.relaunchIfNeeded  → Windows classpath launch without the sun.awt.windows export / macOS without -XstartOnFirstThread / Linux Wayland without GDK_BACKEND:
+ ├─ PlatformLaunch.relaunchIfNeeded  → macOS without -XstartOnFirstThread / Linux Wayland without GDK_BACKEND:
  │                                     start the app again with it, exit with its code (PLAN P5.4)
  ├─ System props: sun.java2d.uiScale=1, dpiaware=false
  ├─ Shutdown.addHook()                 → on exit: config.save, OrientationStore.save, CopyLogger.flush,
@@ -53,7 +53,7 @@ IFileEntry<E> ◄─ IImageEntry<E> (types map ext→ImageType) ◄─ ImageAbst
    ImageDec<E>  decorator: .cry → plain    (Encryptor.decrypt; name from header)
    ImageEnc<E>  decorator: plain → .cry    (used only as a copy source)
    ImageAimDec<E> decorator: .aim → first embedded file
-Buf        — Closeable ByteBuffer holder (may wrap a mapped buffer + channel). Always close.
+Buf        — Closeable ByteBuffer holder. Off-heap memory (an mmap or an archive extract) belongs to a shared FFM `Arena` (`HelperFS.arenaBuf`) that close() frees: deterministic unmap without the `Unsafe` cleaner; an access after close throws instead of crashing. Always close.
 IAbstractReader — initialize/read/register(watcher)/getEntryByIdentifier/getComparator/close
    FileReader     — directory scan (commons AbstractFileProcessor), WatchService, optional recursion into archives (sub-SevenZipReaders)
    SevenZipReader — one archive via 7-Zip-JBinding
@@ -83,46 +83,39 @@ key → CommonContainerExt.next()/prev() → ImageAbstract
 ```
 
 ## 6. Native loading (the reason the libraries are vendored)
-**Design intent (from the owner):** stock SWT, 7-Zip-JBinding, OpenCV and similar jars ship natives for many OSes and extract them themselves. xanderView instead uses **custom, performance-optimized native builds**, some compiled and copied by hand, that are loaded by one routine and **stored persistently** per user. To make that work, every native-using library is vendored and its loader is patched to call `net.j7.commons.jni.LibraryLoader`. The same reason explains the **small classes-only OpenCV jar** (`xanderView/opencv/opencv-460.jar`, a WPILib 4.6.0-5 build, 326 KB) instead of a 100 MB+ bundled-natives distribution.
+**Design intent (from the owner):** stock SWT, 7-Zip-JBinding, OpenCV and similar jars ship natives for many OSes and extract them themselves on every start. xanderView instead loads every native through one routine, `net.j7.commons.jni.LibraryLoader`, from a **persistent per-user cache**, and ships **one small package per platform** (no fat jar). Since P7 the natives are unmodified upstream builds, pinned by SHA-256 in `natives/<platform>.tsv` and shipped as bundles next to the jar ([NATIVES.md](NATIVES.md)); hand-built files remain possible as an override. Every native-using library is vendored and its loader is patched to call `LibraryLoader`. The same reason explains the **small classes-only OpenCV jar** (WPILib 4.6.0-5, 326 KB) instead of a 100 MB+ bundled-natives distribution.
 
 `LibraryLoader.loadLibrary(name)` / `checkLibrary(name, load)` / `tryLoadLibrary(name)` (returns whether it loaded; used by the stock-SWT `Library`):
-0. **File name** (`fileName`, PLAN P5.2): the load name's candidates are `<name>.<ext>` and, on Linux/macOS, `lib<name>.<ext>`; macOS tries `.dylib` then `.jnilib` (JNA libraries only `.dylib`). The first candidate present in the **source** wins, else the first present in the cache, else the first one (reported missing). Windows has exactly one candidate, `<name>.dll`. Memoized per JVM.
-1. **Target (persistent cache):** `<AppDataDir>/libs/<os>/<arch>/<file>`.
-2. **Copy on change (lazy, per library, on its first request in a JVM):**
-   - **Source:** `<location>/libs/<os>/<arch>/<file>`. `location` (a directory path, `file:`, `jar:` or `http` URL) comes from, in order: the system property `xview.libs.location`, the environment variable `XVIEW_LIBS_LOCATION`, `location` in `/libs.properties` on the classpath, else the jar that contains `libs.properties` (PLAN P1.9).
-   - **When it copies:** when the cache file is missing, or its **content differs** from the source. The check is an exact comparison: `Files.mismatch` for local files, a streamed compare otherwise. It measured about 21–28 ms for all 8 DLLs, with a warm OS file cache.
-   - **How it publishes:** writes a sibling temp file `<file>.<pid>-<nanos>.tmp`, then does `ATOMIC_MOVE`. For local-file sources the temp file is verified byte by byte; stream sources rely on a complete read with no exception.
-   - **If the target is in use:** when the old DLL is mapped by a running instance, it is renamed to `<file>.old-<nanos>` and the new one moved in.
-   - **If publishing fails:** the loader first accepts a concurrent winner with equal content, then loads **directly from the local source file** (this avoids a stale cache copy; it is not a cross-library version guarantee). As a last resort it loads the stale cache with a warning. If the source exists but cannot be read, the existing cache is used; an unreadable *cache* file is treated as stale (replaced, or the source is loaded).
-   - **Cleanup:** leftovers older than 10 minutes are swept once per JVM.
-   - **Co-location** (`resolve`): if a Windows dependency had to come from the source directory, the library is loaded from there too, so its imports resolve next to it. A load that fails because the file vanished mid-swap is resolved and retried once.
-3. **Load:**
-   - `load=true` → `System.load(file)` (JNI). Unix: the published file is made `rwxr-xr-x` without spawning `chmod`.
-   - `load=false` → only makes the file available and sets `jna.library.path` / `jna.platform.library.path` to its folder (JNA libs).
-   - Per-JVM state per name is MISSING / COPIED / LOADED. A later `loadLibrary` promotes COPIED to LOADED, and a failed `System.load` is retried on the next call. The method is `synchronized` (re-entrant).
-4. **Windows dependencies:** requesting `libavif` also makes `libgcc_s_seh-1` available next to it (copy only; `WINDOWS_DEPENDENCIES`). This is preventive: the current libavif 1.1.1 loads without it (PLAN B9).
-5. **Soft failure:**
-   - A missing source with no cache logs `doesn't exist: …` once (warning) and returns `false` without throwing. The failure surfaces later as `UnsatisfiedLinkError`.
-   - A present but incompatible DLL throws from `System.load` immediately.
+0. **File name** (`fileName`, PLAN P5.2): the load name's candidates are `<name>.<ext>` and, on Linux/macOS, `lib<name>.<ext>`; macOS tries `.dylib` then `.jnilib` (JNA libraries only `.dylib`). In manifest mode the first candidate listed in `natives.sha256` wins; otherwise the first candidate present in the **source**, else the first present in the cache, else the first one (reported missing). Windows has exactly one candidate, `<name>.dll`. Memoized per JVM.
+1. **Source:** `<location>/libs/<os>/<arch>/`. `location` comes from, in order: `-Dxview.libs.location`, the environment variable `XVIEW_LIBS_LOCATION`, `location` in `/libs.properties` (empty since P7), **the directory of the jar that contains `libs.properties` if it has `libs/<os>/<arch>/`** (the dist layout), else that jar itself (`jar:` URL). Running from class directories without an override means "cache only".
+2. **Manifest mode** (the source has `natives.sha256`, `sha256sum` format; optional `natives.deps`): bundle id = first 12 hex of SHA-256 over the manifest text; cache dir `<AppData>/libs/<os>/<arch>/<bundle12>/`. On a library's first request the file is copied to a sibling temp file, its SHA-256 is verified against the manifest, and it is moved into place atomically (`FileAlreadyExists`/`AccessDenied` = another instance published the same verified content). A file already in the bundle dir is trusted (one `stat` per library per start). If `System.load` fails on a trusted file, the hash is re-checked: mismatch → the file is deleted and copied again once; intact → the `UnsatisfiedLinkError` propagates (state FAILED). Bundle dirs are immutable, so several installed versions share one cache root; nothing is swept automatically.
+   - **Authority:** the jar carries the manifest it was built with (`/libs/<os>/<arch>/natives.sha256` + `natives.deps`, from the build's bundle). For the default location the jar's copy is authoritative: a source whose manifest differs is logged as an error and only files matching the jar's hashes are trusted (a tampered file is "checksum mismatch", not loaded). An explicit `-Dxview.libs.location`/`XVIEW_LIBS_LOCATION` is the owner's override: the source's own manifest is authoritative and a difference is logged once as a warning. File names in manifests must be plain names.
+   - **macOS:** the `com.apple.quarantine` attribute is removed from the copy (`Files.copy` may clonefile and keep it).
+3. **Legacy mode** (no `natives.sha256` in the source): the flat directory `<AppData>/libs/<os>/<arch>/<file>`, copied when missing or when the content differs from the source (exact comparison: `Files.mismatch` for local files, a streamed compare otherwise; 21–28 ms for the 8 DLLs warm). Publishing: sibling temp file, verified, `ATOMIC_MOVE`; a DLL mapped by a running instance is renamed to `<file>.old-<nanos>` first; if publishing fails the loader loads the local source file directly, or, as a last resort, the stale cache file with a warning. Leftovers older than 10 minutes are swept once per JVM. The owner's deployed `C:\Program Files\xview\libs` (no manifest) keeps working this way.
+4. **Dependencies:** `natives.deps` lines (`libjxl_jni.so: libbrotlicommon.so.1 libbrotlidec.so.1 libhwy.so.1 libjxl_threads.so.0.11`) plus the built-in Windows entry `opencv_java460.dll → concrt140.dll?` (`?` = optional, loaded only when the bundle has it; the JDK does not ship `concrt140`). Dependencies are made available the same way and `System.load`-ed first by absolute path (recursively), so the dynamic linker resolves the dependent's import by module name / soname / install name against the loaded image. File names must therefore equal the soname (`libhwy.so.1`), not the full version.
+5. **Load:** `load=true` → `System.load(file)` (JNI; Unix: the published file is made `rwxr-xr-x`). `load=false` → only makes the file available and sets `jna.library.path` / `jna.platform.library.path` to its folder (JNA: `libavif`). Per-JVM state per load name: MISSING / COPIED / LOADED / FAILED; a later `loadLibrary` promotes COPIED to LOADED. The method is `synchronized` (re-entrant).
+6. **Soft failure:** a missing source with no cache logs `doesn't exist: …` once (warning) and returns `false` without throwing; the failure surfaces later as `UnsatisfiedLinkError`. A present but incompatible native throws from `System.load` immediately. Callers that must degrade: `ImageLoader` (JPEG → ImageIO), `ScaleFactory` (OpenCV → Lanczos3), the stock-SWT `Library` (`tryLoadLibrary` → `UnsatisfiedLinkError`).
+7. **Diagnostics (B10):** `report()` gives one line per file of the jar's manifest (`not requested | COPIED | LOADED | MISSING | FAILED`) plus the source, mode and bundle id; `checkAll()` loads every manifest file in order (dependencies first; `jawt` is preloaded for `swt-awt`) and returns the failures. `java -jar xanderview.jar --check-natives` (`gui/NativeCheck`) prints both and exits 1 on a failure; it runs before `PlatformLaunch`.
 
 | | Windows | Linux | macOS |
 |---|---|---|---|
-| `<AppDataDir>` (first writable, `io/SysInfo`) | `%APPDATA%\xanderView` (e.g. `C:\Users\<u>\AppData\Roaming\xanderView`) | `~/.local/share/.xanderView` (note the dot) | `~/Library/Application Support/xanderView` |
+| `<AppDataDir>` (first writable, `io/SysInfo`) | `%APPDATA%\xanderView` (e.g. `C:\Users\<u>\AppData\Roaming\xanderView`) | `~/.local/share/.xanderView` (note the dot; P7.8) | `~/Library/Application Support/xanderView` |
 | `<os>` / `<ext>` | `windows` / `dll` | `linux` / `so` | `macos` / `dylib`, then `jnilib` (JNA: `dylib` only) |
 | `<arch>` (from `os.arch`; `arm64` → `aarch64`) | `amd64` (x86_64 is mapped to amd64), `aarch64` | `x86_64` (amd64 is mapped to x86_64), `aarch64` | `x86_64`, `aarch64` |
 | Names | The load name is the literal file stem, so `lib` prefixes are part of the name (`lib7-Zip-JBinding`, `libavif`, `libjxl_jni`) | `<name>` or `lib<name>` (`turbojpeg` → `libturbojpeg.so`) | as Linux |
 
 Load sites (Windows names):
 - JNI:
-  - SWT `internal/Library.loadLibrary` (win32 4.527): `swt`, plus soft-failing `swt-gdip` and `swt-awt`. Stock-SWT flavors (gtk/cocoa 3.135, patched `Library`): `tryLoadLibrary` for `<name>-<platform>-<version>` (e.g. `swt-pi3-gtk-4974r10`), `<name>-<platform>`, `<name>`; throws `UnsatisfiedLinkError` if none loads
-  - `SevenZip.ensureLibraryIsInitialized`: `lib7-Zip-JBinding`, `libgcc_s_seh-1`, then `initLoadedLibraries()`
+  - SWT `internal/Library.loadLibrary` (stock 3.135, patched, all flavors): `tryLoadLibrary` for `<name>-<platform>-<version>` (e.g. `swt-win32-4974r10`, `swt-pi3-gtk-4974r10`), `<name>-<platform>`, `<name>`; throws `UnsatisfiedLinkError` if none loads. Windows loads `swt-osversion-win32-4974r10` and `swt-win32-4974r10` at startup, `swt-awt-win32-4974r10` at `SWT_AWT.new_Frame` (plus the JDK's `jawt`), `swt-gdip-win32-4974r10` lazily
+  - `SevenZip.ensureLibraryIsInitialized`: `lib7-Zip-JBinding`, then `initLoadedLibraries()` (`libgcc_s_seh-1` is no longer requested, P7)
   - `TJLoader`: `turbojpeg` (direct `LibraryLoader` call since P5.1)
   - `WebP.loadNativeLibrary`: `webp-imageio`
   - `JpegXLImageReader` (static): `libjxl_jni`
   - `ResizerNewOpenCV` (static): `opencv_java460`
 - JNA: `Avif` calls `checkLibrary("libavif", false)`, then `Native.load("avif")`. JNA on Windows also tries the `lib` prefix, which finds `libavif.dll`.
+- Outside the loader: JNA extracts its own `jnidispatch` (P7.8); `Hasher` uses the pure-Java xxHash (`XXHashFactory.safeInstance()`), so lz4-java extracts nothing.
 
-Full DLL table and platform status: [DEPENDENCIES.md#natives](DEPENDENCIES.md#natives).
+Full platform matrix, bundle format and owner workflows: [NATIVES.md](NATIVES.md); the Windows file table: [DEPENDENCIES.md#natives](DEPENDENCIES.md#natives).
 
 ## 7. Extension points (how to add …)
 | Add | Touch |

@@ -82,7 +82,8 @@ Other keys are logged at debug level (`unbound key code: <n>`; enable with `-Dor
 |---|---|---|---|
 | `xander.properties` | `%APPDATA%\xanderView\` (first writable app-data dir, `SysInfo.getAppDataDir`) | `ApplConfiguration` (saved by a timer when dirty, and at exit) | Java properties (§8) |
 | `imagedata.bin` | same dir | `OrientationStore` at exit (temp file + replace) | Big-endian pairs of `long crc, long packed`. There is no header, version or checksum. Packed bits:<br>• 0–3: orientation as **ordinal+1** (0 = unset; the `Orientation` enum order is part of the format)<br>• 4–9: zoom<br>• 10–15: pan-x<br>• 16–21: pan-y<br>• 22–27: gamma<br>Each 6-bit field maps 0 → 0, −31..−1 → 1..31 (`v+32`), +1..+31 → 32..62 (`v+31`). |
-| `libs\<os>\<arch>\*` | same dir | `LibraryLoader`: a persistent cache, re-copied when the source content differs (exact compare, atomic publish) | the 8 native libraries (Windows: `libs\windows\amd64\*.dll`) |
+| `libs\<os>\<arch>\<bundle12>\*` | same dir | `LibraryLoader` manifest mode (dist zips): a content-addressed per-bundle cache, each file copied once and verified against `natives.sha256`, never modified afterwards; one directory per installed bundle, not swept automatically | the natives of the bundle (Windows: 7 DLLs) |
+| `libs\<os>\<arch>\*` | same dir | `LibraryLoader` legacy mode (source without `natives.sha256`): a flat cache, re-copied when the source content differs (exact compare, atomic publish) | the natives (Windows: `libs\windows\amd64\*.dll`) |
 | `_zlst.csv` | CWD | `ApplConfiguration.save` when `csv=1` | `lastEntryId` |
 | `history_dd_MM_yy.log` | copy target | `CopyLogger` | one line per copy |
 
@@ -103,10 +104,10 @@ Other keys are logged at debug level (`unbound key code: <n>`; enable with `-Dor
 
 ## 9. Non-functional
 - **Platforms:**
-  - Implemented: Windows 10+ x64 (SWT 4.527 win32 flavor).
+  - Implemented: Windows 10 (build 14393+, required by stock SWT 3.135's `swt-osversion` check) x64; Linux/macOS dist zips exist but are unverified.
   - Required targets: Linux and macOS x86_64; optional: aarch64 on all three. Their jars build (`-Dswt.flavor`, SWT 3.135 gtk/cocoa), but the natives don't exist yet (PLAN P5.3).
-- **Runtime:** JDK/JRE 21+. The deployed install bundles Liberica JRE 23. `java -jar` needs no flags: the manifest has `Add-Exports: java.desktop/sun.awt.windows` (SWT_AWT) and `Enable-Native-Access: ALL-UNNAMED`. A classpath/IDE launch without `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` restarts itself once with it. On macOS the app restarts itself once with `-XstartOnFirstThread`, and on Linux under Wayland with `GDK_BACKEND=x11` (`-Dxview.relaunch=false` disables this).
+- **Runtime:** JDK/JRE 26+. The deployed install still bundles Liberica JRE 23, which cannot run jars built since the JDK 26 migration (PLAN P6). `java -jar` needs no flags: the manifest has `Enable-Native-Access: ALL-UNNAMED` (the former `Add-Exports: java.desktop/sun.awt.windows` went with the vendored SWT 4.527 in P7).desktop/sun.awt.windows` (SWT_AWT) and `Enable-Native-Access: ALL-UNNAMED`. A classpath/IDE launch without `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` restarts itself once with it. On macOS the app restarts itself once with `-XstartOnFirstThread`, and on Linux under Wayland with `GDK_BACKEND=x11` (`-Dxview.relaunch=false` disables this).
 - **Natives:** 8 custom DLLs on Windows: `swt`, `lib7-Zip-JBinding`, `libgcc_s_seh-1`, `turbojpeg`, `webp-imageio`, `libavif` (JNA), `libjxl_jni`, `opencv_java460`.
-  - They are copied, on first use or when changed, from `<location>/libs/windows/amd64/` (`libs.properties`, or `-Dxview.libs.location` / env `XVIEW_LIBS_LOCATION`; deployed as `C:\Program Files\xview\libs\`) into the persistent cache `%APPDATA%\xanderView\libs\windows\amd64\` (§7).
+  - They are copied on first use from `<location>/libs/<os>/<arch>/` (default: `libs/` next to the jar, else inside the jar; override `-Dxview.libs.location` / env `XVIEW_LIBS_LOCATION`) into the persistent cache `%APPDATA%\xanderView\libs\<os>\<arch>\…` (§7). `java -jar xanderview.jar --check-natives` loads every native of the shipped manifest headless and exits 1 if one fails ([docs/NATIVES.md](docs/NATIVES.md)).
   - Missing libraries fail softly: the feature breaks with `UnsatisfiedLinkError`. See [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md#natives).
 - **Logging:** SLF4J with `slf4j-simple` to stderr at level `info` (config `simplelogger.properties`; override with `-Dorg.slf4j.simpleLogger.*`). Vendored libraries may still print directly.

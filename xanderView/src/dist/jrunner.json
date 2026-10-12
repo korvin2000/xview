@@ -1,0 +1,14 @@
+{
+  "name": "xanderView",
+  "id": "xanderview",
+  "version": "${project.version}",
+  "publisher": "korvin2000",
+  "jar": "xanderview.jar",
+  "files": ["libs", "THIRD-PARTY-NOTICES.md"],
+  "java": {
+    "minVersion": 26,
+    "downloadVersion": 26,
+    "options": ["-Xms256m", "-Xmx4000m", "-XX:+UseStringDeduplication"]
+  },
+  "install": { "desktopShortcut": true, "menuShortcut": true, "addToPath": false }
+}

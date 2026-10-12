@@ -8,8 +8,13 @@ import java.awt.image.BufferedImage;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 public class ScaleFactory  {
+
+	private static final Logger log = LoggerFactory.getLogger(ScaleFactory.class);
 
 
 	//CV / OpenCV Quality (upscale): CV_LANCZOS4 > CV_BICUBIC > CV_LINEAR > CV_AREA > CV_NEAREST
@@ -65,19 +70,46 @@ public class ScaleFactory  {
 		return resizer;
 	}
 
+	/**
+	 * An OpenCV resizer that degrades to the Java Lanczos3 resizer when the OpenCV native is missing or unloadable
+	 * (soft-failing {@code LibraryLoader}; docs/NATIVES.md §4, PLAN B3): the first failure is logged, later calls go
+	 * straight to the fallback.
+	 */
+	private IResizer openCv(final int key) {
+		return new IResizer() {
+			private IResizer fallback;
+
+			public BufferedImage resize(BufferedImage sourceImage, int outputWidth, int outputHeight) {
+				if (null == fallback) {
+					try {
+						return ResizerNewOpenCV.instance(key).resize(sourceImage, outputWidth, outputHeight);
+					} catch (LinkageError e) {
+						log.warn("OpenCV native unavailable, using the Java Lanczos3 resizer instead: {}", e.toString());
+						fallback = new ResizerNobel(0);
+					}
+				}
+				return fallback.resize(sourceImage, outputWidth, outputHeight);
+			}
+
+			public String name() {
+				return null == fallback ? "CV" + key : fallback.name();
+			}
+		};
+	}
+
 	//change to private again
 	public IResizer getInstanceByType0(int type) {
 		SCALER scaler = scalerIds.get(type);
 
 		switch (scaler) {
 		case CV_LINEAR:
-			return ResizerNewOpenCV.instance(2);
+			return openCv(2);
 		case CV_AREA:
-			return ResizerNewOpenCV.instance(1);
+			return openCv(1);
 		case CV_BICUBIC:
-			return ResizerNewOpenCV.instance(3);
+			return openCv(3);
 		case CV_LANCZOS4:
-			return ResizerNewOpenCV.instance(4);
+			return openCv(4);
 		case NOBEL_LANCZOS3:
 			return new ResizerNobel(0);
 		case NOBEL_BICUBIC_HF:

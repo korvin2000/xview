@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Per-platform distribution (docs/NATIVES.md §3): xanderview-<version>-<platform>.zip
+     xanderview.jar, libs/<os>/<arch>/ (natives + natives.sha256 + natives.deps), launcher, jrunner.json, THIRD-PARTY-NOTICES.md -->
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 https://maven.apache.org/xsd/assembly-2.2.0.xsd">
+    <id>dist</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>true</includeBaseDirectory>
+    <baseDirectory>xanderview-${project.version}-${xview.platform}</baseDirectory>
+    <files>
+        <file>
+            <source>${project.build.directory}/${project.build.finalName}.jar</source>
+            <outputDirectory>/</outputDirectory>
+            <destName>xanderview.jar</destName>
+        </file>
+        <file>
+            <source>${project.basedir}/src/dist/jrunner.json</source>
+            <outputDirectory>/</outputDirectory>
+            <filtered>true</filtered>
+        </file>
+    </files>
+    <fileSets>
+        <fileSet>
+            <directory>${xview.natives.dir}</directory>
+            <outputDirectory>/</outputDirectory>
+            <includes>
+                <include>libs/**</include>
+                <include>THIRD-PARTY-NOTICES.md</include>
+            </includes>
+        </fileSet>
+        <fileSet>
+            <directory>${project.basedir}/src/dist/${xview.dist.scripts}</directory>
+            <outputDirectory>/</outputDirectory>
+            <fileMode>0755</fileMode>
+        </fileSet>
+    </fileSets>
+</assembly>

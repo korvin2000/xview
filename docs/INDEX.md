@@ -14,6 +14,7 @@ CLAUDE.md ─ always loaded: commands, big picture, rules, doc-sync
    ├─ SOURCE_MAP.md ─ every app class (status A/D/T/X), used commons classes, thirddep entry points
    ├─ ARCHITECTURE.md ─ modules §1, startup §2, threads §3, data model §4, pipeline §5, natives §6, extension points §7, patterns §8
    ├─ DEPENDENCIES.md ─ native design §0, Maven deps §1, vendored libs §2, commons usage §3, natives + platform matrix §4, vavi research §5
+   ├─ NATIVES.md ─ natives: what the DLLs really are, 6-platform sources, bundles + manifests, loader modes, owner workflows, open decisions (P7)
    └─ BUILD.md ─ why hard, toolchain, javac-check, Maven blockers, deploy layout, run, tests
 .claude/rules/ ─ path-scoped rules, auto-loaded for matching files (docs-sync, thirddep, commons, persisted-formats)
 tools/ ─ javac-check.sh (compile without Maven), check-docs.sh (doc drift)
@@ -36,9 +37,10 @@ tools/ ─ javac-check.sh (compile without Maven), check-docs.sh (doc drift)
 | Change navigation, sorting, modes | [SPEC §3](../SPEC.md) | `file/CommonContainer(Ext)`, `comparator/*` |
 | Read directories or archives | [ARCHITECTURE §4](ARCHITECTURE.md) | `file/readers/*`, `file/entry/{ImageFS,ImageZip,HelperFS}` |
 | Add a config option | [SPEC §8](../SPEC.md) | `gui/config/ApplConfiguration` |
-| Fix a native DLL load failure | [ARCHITECTURE §6](ARCHITECTURE.md), [DEPENDENCIES §4](DEPENDENCIES.md#natives), [BUILD deploy layout](BUILD.md) | `commons-j7/.../jni/LibraryLoader`, `libs.properties`; check `%APPDATA%\xanderView\libs\…` (stale cache, PLAN B8) |
-| Add or update a native library | [DEPENDENCIES §0, §4](DEPENDENCIES.md) | the patched loader in thirddep (load name = file stem), the `libs/<os>/<arch>/` source, the cache |
-| Port to Linux/macOS or aarch64 | [PLAN P5](../PLAN.md), [DEPENDENCIES §4 matrix](DEPENDENCIES.md#natives) | parent `swt-*` profiles, `thirddep-j7/src/swt-{win32,stock}`, `gui/PlatformLaunch`, `LibraryLoader`, `SysInfo`, natives |
+| Fix a native DLL load failure | [NATIVES §4](NATIVES.md), [ARCHITECTURE §6](ARCHITECTURE.md), [DEPENDENCIES §4](DEPENDENCIES.md#natives) | `java -jar xanderview.jar --check-natives`; `commons-j7/.../jni/LibraryLoader`; the cache `%APPDATA%\xanderView\libs\<os>\<arch>\[<bundle12>\]` |
+| Add or update a native library, build the bundles | [NATIVES.md](NATIVES.md), [natives/README.md](../natives/README.md) | `natives/<platform>.tsv`, `tools/natives/bundle.sh`, `check-binaries.sh`, the pom's `xview.natives.*` properties |
+| Build the per-platform dist zips | [BUILD natives bundles](BUILD.md), [NATIVES §3](NATIVES.md) | `xanderView/src/assembly/dist.xml`, `src/dist/`, `.github/workflows/build.yml` |
+| Port to Linux/macOS or aarch64 | [NATIVES §2](NATIVES.md), [PLAN P5/P7](../PLAN.md), [DEPENDENCIES §4 matrix](DEPENDENCIES.md#natives) | parent `swt-*` profiles, `thirddep-j7/src/swt-{win32,stock}`, `gui/PlatformLaunch`, `LibraryLoader`, `SysInfo`, `natives/*.tsv` |
 | Fix the vavi / jitpack dependencies | [DEPENDENCIES §5](DEPENDENCIES.md) | `thirddep-j7/pom.xml` |
 | Window, fullscreen, splash UI | [SOURCE_MAP gui/*](SOURCE_MAP.md) | `gui/helpers/MultiShell`, `gui/splash/*` |
 | Remove dead code | [PLAN P2](../PLAN.md), [SOURCE_MAP](SOURCE_MAP.md) status D/X | grep for references first |

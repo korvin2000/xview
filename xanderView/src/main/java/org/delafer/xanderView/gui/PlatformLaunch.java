@@ -21,9 +21,8 @@ import org.slf4j.LoggerFactory;
  * environment variable {@code JAVA_STARTED_ON_FIRST_THREAD_<pid>=1}.</li>
  * <li>Linux: {@code SWT_AWT} embeds the AWT canvas via XEmbed, i.e. X11. In a Wayland session GTK must use XWayland,
  * which needs {@code GDK_BACKEND=x11} before GTK starts. A user-set {@code GDK_BACKEND} is respected.</li>
- * <li>Windows: SWT 4.527's {@code SWT_AWT} reflects into {@code sun.awt.windows}. {@code java -jar} gets the export from
- * the manifest's {@code Add-Exports}; a classpath launch (IDE, {@code -cp}) without
- * {@code --add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED} is restarted once with it.</li>
+ * <li>Windows: nothing since the stock SWT 3.135 flavor (P7): its {@code SWT_AWT} creates the embedded frame through JNI,
+ * so the former {@code --add-exports=java.desktop/sun.awt.windows} restart of classpath launches is gone.</li>
  * </ul>
  * The child gets {@code -Dxview.relaunched=true} and never relaunches again; {@code -Dxview.relaunch=false} disables
  * the check (e.g. when a launcher already sets the flags). Must run first in {@code main}, before anything loads AWT
@@ -51,23 +50,10 @@ final class PlatformLaunch {
 		} else if (os.contains("linux")) {
 			if (!needsX11Backend()) return -1;
 			env.put("GDK_BACKEND", "x11");
-		} else if (os.contains("windows")) {
-			if (!needsAwtWindowsExport()) return -1;
-			jvmFlags.add("--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED");
 		} else {
 			return -1;
 		}
 		return relaunch(jvmFlags, env, args);
-	}
-
-	/** @return true if {@code java.desktop/sun.awt.windows} exists but is not exported to this (unnamed) module */
-	private static boolean needsAwtWindowsExport() {
-		Module desktop = ModuleLayer.boot().findModule("java.desktop").orElse(null);
-		if (desktop == null || !desktop.getPackages().contains("sun.awt.windows")) return false;
-		if (desktop.isExported("sun.awt.windows", PlatformLaunch.class.getModule())) return false;
-		log.warn("java.desktop/sun.awt.windows is not exported (classpath launch): restarting with it. "
-				+ "Add --add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED to the VM options to skip the restart (and to debug in the same JVM).");
-		return true;
 	}
 
 	private static boolean needsX11Backend() {
@@ -98,7 +84,7 @@ final class PlatformLaunch {
 			command.add(arg);
 		}
 		command.add("-D" + RELAUNCHED + "=true");
-		// -jar starts become -cp starts: the manifest no longer applies (a needed --add-exports is already in jvmFlags)
+		// -jar starts become -cp starts: the manifest no longer applies (the needed JVM flags are already in jvmFlags)
 		command.add("--enable-native-access=ALL-UNNAMED");
 		command.add("-cp");
 		command.add(System.getProperty("java.class.path"));

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Compile all three modules with plain javac (no Maven needed), using jars from the local
+# Compile all three modules with plain javac (no Maven needed; Windows flavor = stock SWT 3.135 jar + patched Library), using jars from the local
 # Maven repo. A fast "does it still compile?" check of main sources only: no resources, no tests,
 # no shading, no runtime/native check (use `mvn package` + jar inspection for that).
-# Covers the Windows SWT flavor (vendored thirddep-j7/src/swt-win32); the stock-SWT flavors need Maven
+# Covers the Windows flavor (stock SWT 3.135 win32 jar from ~/.m2 + patched thirddep-j7/src/swt-stock); other flavors need Maven
 # (they unpack the stock SWT jar, see docs/BUILD.md).
 # Output goes to a disposable directory, never to target/.
 # Usage: bash tools/javac-check.sh [outdir]   (outdir must be new/empty or a previous javac-check dir)
@@ -13,13 +13,14 @@ winpath() { if command -v cygpath >/dev/null; then cygpath -m "$1"; else echo "$
 ROOT=$(winpath "$(pwd)")
 SEP=':'; [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]] && SEP=';'
 
-# --- JDK 21+ -------------------------------------------------------------------------
+# --- JDK at the parent pom's maven.compiler.release or newer -----------------------------
+REL=$(sed -n 's:.*<maven.compiler.release>\([0-9]*\)</.*:\1:p' pom.xml)
+jver() { "$1" -version 2>&1 | sed -n 's/^javac \([0-9]*\).*/\1/p'; }
 JAVAC=""
-for c in "${JAVA_HOME:-}/bin/javac" "$HOME"/.jdks/temurin-21*/bin/javac "$HOME"/.jdks/*21*/bin/javac "$(command -v javac 2>/dev/null)"; do
-  [[ -n "$c" && -x "$c" ]] && { JAVAC="$c"; break; }
+for c in "${JAVA_HOME:-}/bin/javac" devtools/jdk-"$REL"*/bin/javac "$HOME"/.jdks/*-"$REL"*/bin/javac "$(command -v javac 2>/dev/null)"; do
+  [[ -n "$c" && -x "$c" && "$(jver "$c")" -ge "$REL" ]] && { JAVAC="$c"; break; }
 done
-[[ -z "$JAVAC" ]] && { echo "javac (JDK 21) not found; set JAVA_HOME" >&2; exit 2; }
-"$JAVAC" -version 2>&1 | grep -qE 'javac (2[1-9]|[3-9][0-9])' || { echo "need javac 21+: $("$JAVAC" -version 2>&1)" >&2; exit 2; }
+[[ -z "$JAVAC" ]] && { echo "javac $REL+ not found; set JAVA_HOME (see docs/BUILD.md)" >&2; exit 2; }
 
 M2=$(winpath "${M2_REPO:-$HOME/.m2/repository}")
 OUT=$(winpath "${1:-${TMPDIR:-/tmp}/xview-javac}")
@@ -43,6 +44,7 @@ CP_COMMONS=$(cp_join \
   "$(need "$M2/org/slf4j/slf4j-api/1.7.10/slf4j-api-1.7.10.jar")")
 
 CP_THIRD=$(cp_join "$CP_COMMONS" "$OUT/commons" \
+  "$(need "$M2/org/eclipse/platform/org.eclipse.swt.win32.win32.x86_64/3.135.0/org.eclipse.swt.win32.win32.x86_64-3.135.0.jar")" \
   "$(need "$M2/com/jhlabs/filters/2.0.235-1/filters-2.0.235-1.jar")" \
   "$(need "$M2/com/github/umjammer/vavi-commons/vavi-commons/1.1.14/vavi-commons-1.1.14.jar")" \
   "$(need "$M2/net/java/dev/jna/jna/5.15.0/jna-5.15.0.jar")")
@@ -68,9 +70,9 @@ run() { # name release classpath outdir listfile [extra javac args]
   fi
 }
 srcs commons-j7/src/main/java > "$OUT/work/commons.lst"
-{ srcs thirddep-j7/src/main/java; srcs thirddep-j7/src/swt-win32/java; } > "$OUT/work/third.lst"
+{ srcs thirddep-j7/src/main/java; srcs thirddep-j7/src/swt-stock/java; } > "$OUT/work/third.lst"
 srcs xanderView/src/main/java > "$OUT/work/app.lst"
-run commons 21 "$CP_COMMONS" "$OUT/commons" "$OUT/work/commons.lst"
-run thirddep 21 "$CP_THIRD" "$OUT/third" "$OUT/work/third.lst"
-run xanderView 21 "$CP_APP" "$OUT/app" "$OUT/work/app.lst"
+run commons "$REL" "$CP_COMMONS" "$OUT/commons" "$OUT/work/commons.lst"
+run thirddep "$REL" "$CP_THIRD" "$OUT/third" "$OUT/work/third.lst"
+run xanderView "$REL" "$CP_APP" "$OUT/app" "$OUT/work/app.lst"
 exit $rc

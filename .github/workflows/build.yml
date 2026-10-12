@@ -1,0 +1,71 @@
+# Cross-builds the per-platform distribution zips on one Linux runner (Java is portable, the natives are prebuilt
+# bundles, docs/NATIVES.md §3) and probes each zip on a runner of its platform (`--check-natives`, PLAN B10).
+# Prerequisite: the GitHub release natives-<rev> with the bundle zips referenced by the parent pom exists
+# (xview.natives.rev / xview.natives.sha256). Until then the build job fails at the download step by design.
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  dist:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [win32.win32.x86_64, gtk.linux.x86_64, gtk.linux.aarch64, cocoa.macosx.x86_64, cocoa.macosx.aarch64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: maven
+      - name: Build ${{ matrix.flavor }}
+        run: ./mvnw -B -DskipTests -Dswt.flavor=${{ matrix.flavor }} -Dxview.natives.skip=false package
+      - name: Collect dist zip
+        run: |
+          mkdir -p out
+          find xanderView -maxdepth 2 -path '*/target*/xanderview-*-*.zip' -exec cp {} out/ \;
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.flavor }}
+          path: out/*.zip
+          if-no-files-found: error
+
+  probe:
+    needs: dist
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, flavor: win32.win32.x86_64 }
+          - { os: ubuntu-24.04, flavor: gtk.linux.x86_64 }
+          - { os: ubuntu-24.04-arm, flavor: gtk.linux.aarch64 }
+          - { os: macos-15-intel, flavor: cocoa.macosx.x86_64 }
+          - { os: macos-14, flavor: cocoa.macosx.aarch64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.flavor }}
+          path: dist
+      - name: Linux prerequisites (SWT needs GTK 3)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-3-0t64 libatk1.0-0t64 libxtst6 || sudo apt-get install -y --no-install-recommends libgtk-3-0 libatk1.0-0 libxtst6
+      - name: Unpack
+        shell: bash
+        run: |
+          cd dist && for z in *.zip; do unzip -q "$z"; done && ls -R | head -40
+      - name: Check natives (cold per-user cache)
+        shell: bash
+        run: |
+          cd dist/xanderview-*/
+          java --enable-native-access=ALL-UNNAMED -jar xanderview.jar --check-natives

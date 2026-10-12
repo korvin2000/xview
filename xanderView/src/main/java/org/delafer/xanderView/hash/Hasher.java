@@ -41,7 +41,8 @@ public class Hasher {
 
 
 	private Hasher() {
-		XXHashFactory hash = XXHashFactory.fastestInstance();
+		// pure-Java xxHash64: identical output, no JNI temp extraction and no Unsafe (DEPENDENCIES §4: natives only via LibraryLoader)
+		XXHashFactory hash = XXHashFactory.safeInstance();
 		hash64 = hash.hash64();
 	}
 	public long calc(ByteBuffer buf, long seed) {

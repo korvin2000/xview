@@ -9,7 +9,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>26</maven.compiler.release>
         <net.j7.commons.version>1.0.0</net.j7.commons.version>
         <net.j7.thirddep.version>1.0.0</net.j7.thirddep.version>
         <junit.version>4.8.2</junit.version>
@@ -22,6 +22,14 @@
         <swt.stock.version>3.135.0</swt.stock.version>
         <!-- build output per SWT flavor; Windows keeps the plain target/ -->
         <swt.build.dir>target</swt.build.dir>
+        <!-- native bundles (docs/NATIVES.md §3): one hash-pinned zip per platform from the GitHub release natives-<rev>.
+             xview.natives.skip=true builds without natives (legacy loader mode); -Dxview.natives.dir=<dir containing libs/> builds
+             from a local tree (profile natives-local). Platform properties come from the swt-* profiles. -->
+        <xview.natives.rev>2026.10</xview.natives.rev>
+        <xview.natives.url>https://github.com/korvin2000/xview/releases/download/natives-${xview.natives.rev}/xview-natives-${xview.platform}-${xview.natives.rev}.zip</xview.natives.url>
+        <xview.natives.skip>false</xview.natives.skip>
+        <xview.natives.dir>${project.build.directory}/natives/${xview.natives.sha256}</xview.natives.dir>
+        <xview.dist.skip>${xview.natives.skip}</xview.dist.skip>
     </properties>
     <modules>
         <module>commons-j7</module>
@@ -164,6 +172,16 @@
                     <artifactId>build-helper-maven-plugin</artifactId>
                     <version>3.6.2</version>
                 </plugin>
+                <plugin>
+                    <groupId>com.googlecode.maven-download-plugin</groupId>
+                    <artifactId>download-maven-plugin</artifactId>
+                    <version>1.13.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-assembly-plugin</artifactId>
+                    <version>3.8.0</version>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
@@ -179,7 +197,7 @@
                         <configuration>
                             <rules>
                                 <requireJavaVersion>
-                                    <version>[21,)</version>
+                                    <version>[26,)</version>
                                 </requireJavaVersion>
                                 <requireMavenVersion>
                                     <version>[3.9,)</version>
@@ -199,11 +217,21 @@
         <!--
             SWT flavor (PLAN P5.1). Exactly one is active: auto-selected from the build machine's OS/arch,
             or forced with -Dswt.flavor=<ws>.<os>.<arch> (cross-build; output then goes to target-<flavor>/).
-            win32: the vendored SWT 4.527 sources (thirddep-j7/src/swt-win32), natives = custom swt.dll.
-            others: stock SWT ${swt.stock.version} classes unpacked into thirddep at build time (natives and the
-            stock loader stripped) + the patched loader in thirddep-j7/src/swt-stock; natives via LibraryLoader.
+            All flavors (since P7, formerly only Linux/macOS): stock SWT ${swt.stock.version} classes unpacked into
+            thirddep at build time (natives and the stock loader stripped) + the patched loader in
+            thirddep-j7/src/swt-stock; natives via LibraryLoader from the platform bundle (swt-win32-4974r10.dll, ...).
             Maven ANDs the activation conditions (>= 3.2.2).
         -->
+        <!-- -Dxview.natives.dir=<dir containing libs/<os>/<arch>/> (e.g. natives/target/<platform> from tools/natives/bundle.sh):
+             no download, dist zip built from that tree -->
+        <profile>
+            <id>natives-local</id>
+            <activation><property><name>xview.natives.dir</name></property></activation>
+            <properties>
+                <xview.natives.skip>true</xview.natives.skip>
+                <xview.dist.skip>false</xview.dist.skip>
+            </properties>
+        </profile>
         <profile>
             <id>swt-win32-x86_64</id>
             <activation>
@@ -212,7 +240,9 @@
             </activation>
             <properties>
                 <swt.ws>win32</swt.ws><swt.os>win32</swt.os><swt.arch>x86_64</swt.arch>
-                <swt.source.dir>src/swt-win32</swt.source.dir><swt.unpack.skip>true</swt.unpack.skip>
+                <xview.platform>windows-x86_64</xview.platform><xview.libdir>windows/amd64</xview.libdir><xview.os>windows</xview.os><xview.dist.scripts>windows</xview.dist.scripts>
+                <xview.natives.sha256>081d1e11c7b79861d0958f8d1d018bea509d5163a9cd86b19c1e6805b179d5a4</xview.natives.sha256>
+                <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
             </properties>
         </profile>
         <profile>
@@ -223,6 +253,8 @@
             </activation>
             <properties>
                 <swt.ws>gtk</swt.ws><swt.os>linux</swt.os><swt.arch>x86_64</swt.arch>
+                <xview.platform>linux-x86_64</xview.platform><xview.libdir>linux/x86_64</xview.libdir><xview.os>linux</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>e9e22975893ab7db9815ea5d9ad30d8e9759116114d61ff4e5a4b263adb99229</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-gtk.linux.x86_64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->
@@ -237,6 +269,8 @@
             </activation>
             <properties>
                 <swt.ws>gtk</swt.ws><swt.os>linux</swt.os><swt.arch>aarch64</swt.arch>
+                <xview.platform>linux-aarch64</xview.platform><xview.libdir>linux/aarch64</xview.libdir><xview.os>linux</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>95db9c2fcfce9b16efad06a45d27a7a65f69fa9b21b2e4157eda924994778dc1</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-gtk.linux.aarch64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->
@@ -251,6 +285,8 @@
             </activation>
             <properties>
                 <swt.ws>cocoa</swt.ws><swt.os>macosx</swt.os><swt.arch>x86_64</swt.arch>
+                <xview.platform>macos-x86_64</xview.platform><xview.libdir>macos/x86_64</xview.libdir><xview.os>macos</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>57773c0366bcaf6614cd108ecc57b05994e87aa3020edc07ddb2bfa10083087f</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-cocoa.macosx.x86_64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->
@@ -265,6 +301,8 @@
             </activation>
             <properties>
                 <swt.ws>cocoa</swt.ws><swt.os>macosx</swt.os><swt.arch>aarch64</swt.arch>
+                <xview.platform>macos-aarch64</xview.platform><xview.libdir>macos/aarch64</xview.libdir><xview.os>macos</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>ef08b057985410c423e4dff87e6aacf934ebdb52451ed528cb8f663b151185db</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-cocoa.macosx.aarch64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->
@@ -277,7 +315,9 @@
             <activation><property><name>swt.flavor</name><value>win32.win32.x86_64</value></property></activation>
             <properties>
                 <swt.ws>win32</swt.ws><swt.os>win32</swt.os><swt.arch>x86_64</swt.arch>
-                <swt.source.dir>src/swt-win32</swt.source.dir><swt.unpack.skip>true</swt.unpack.skip>
+                <xview.platform>windows-x86_64</xview.platform><xview.libdir>windows/amd64</xview.libdir><xview.os>windows</xview.os><xview.dist.scripts>windows</xview.dist.scripts>
+                <xview.natives.sha256>081d1e11c7b79861d0958f8d1d018bea509d5163a9cd86b19c1e6805b179d5a4</xview.natives.sha256>
+                <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
             </properties>
         </profile>
         <profile>
@@ -285,6 +325,8 @@
             <activation><property><name>swt.flavor</name><value>gtk.linux.x86_64</value></property></activation>
             <properties>
                 <swt.ws>gtk</swt.ws><swt.os>linux</swt.os><swt.arch>x86_64</swt.arch>
+                <xview.platform>linux-x86_64</xview.platform><xview.libdir>linux/x86_64</xview.libdir><xview.os>linux</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>e9e22975893ab7db9815ea5d9ad30d8e9759116114d61ff4e5a4b263adb99229</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-gtk.linux.x86_64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->
@@ -296,6 +338,8 @@
             <activation><property><name>swt.flavor</name><value>gtk.linux.aarch64</value></property></activation>
             <properties>
                 <swt.ws>gtk</swt.ws><swt.os>linux</swt.os><swt.arch>aarch64</swt.arch>
+                <xview.platform>linux-aarch64</xview.platform><xview.libdir>linux/aarch64</xview.libdir><xview.os>linux</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>95db9c2fcfce9b16efad06a45d27a7a65f69fa9b21b2e4157eda924994778dc1</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-gtk.linux.aarch64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->
@@ -307,6 +351,8 @@
             <activation><property><name>swt.flavor</name><value>cocoa.macosx.x86_64</value></property></activation>
             <properties>
                 <swt.ws>cocoa</swt.ws><swt.os>macosx</swt.os><swt.arch>x86_64</swt.arch>
+                <xview.platform>macos-x86_64</xview.platform><xview.libdir>macos/x86_64</xview.libdir><xview.os>macos</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>57773c0366bcaf6614cd108ecc57b05994e87aa3020edc07ddb2bfa10083087f</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-cocoa.macosx.x86_64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->
@@ -318,6 +364,8 @@
             <activation><property><name>swt.flavor</name><value>cocoa.macosx.aarch64</value></property></activation>
             <properties>
                 <swt.ws>cocoa</swt.ws><swt.os>macosx</swt.os><swt.arch>aarch64</swt.arch>
+                <xview.platform>macos-aarch64</xview.platform><xview.libdir>macos/aarch64</xview.libdir><xview.os>macos</xview.os><xview.dist.scripts>unix</xview.dist.scripts>
+                <xview.natives.sha256>ef08b057985410c423e4dff87e6aacf934ebdb52451ed528cb8f663b151185db</xview.natives.sha256>
                 <swt.source.dir>src/swt-stock</swt.source.dir><swt.unpack.skip>false</swt.unpack.skip>
                 <swt.build.dir>target-cocoa.macosx.aarch64</swt.build.dir>
                 <!-- cross flavors never reach ~/.m2: same coordinates as the Windows flavor (build them in one reactor run) -->

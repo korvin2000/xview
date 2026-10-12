@@ -10,16 +10,12 @@ public final class Buf implements Closeable {
 
 	private static final Logger log = LoggerFactory.getLogger(Buf.class);
 
-	private transient ByteBuffer b, owner;
+	private transient ByteBuffer b;
+	/** releases b's memory: a mapped or native region via its FFM arena ({@link HelperFS#arenaBuf}); null for heap memory */
 	private transient Closeable c;
 
 	Buf(final ByteBuffer bb) {
 		this.b = bb;
-	}
-
-	Buf(final ByteBuffer bb, final ByteBuffer owner) {
-		this.b = bb;
-		this.owner = owner;
 	}
 
 	Buf(final ByteBuffer bb,final Closeable c) {
@@ -49,10 +45,10 @@ public final class Buf implements Closeable {
 	}
 
 	public void close() throws IOException {
-		HelperFS.closeDirectBuffer(null == owner ? b : owner);
-		if (null != c) {
-			c.close();
-			c = null;
+		final Closeable owner = c;
+		c = null; // idempotent: an arena must be closed exactly once
+		if (null != owner) {
+			owner.close();
 		}
 		//b = null;
 	}

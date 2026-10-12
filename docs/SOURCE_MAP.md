@@ -8,11 +8,12 @@
 ### gui — entry, window, canvas
 | Class | LOC | St | Role |
 |---|---|---|---|
-| [MainEntryPoint](../xanderView/src/main/java/org/delafer/xanderView/gui/MainEntryPoint.java) | 65 | A | `main`: `PlatformLaunch`, DPI props, shutdown hook, preload stores, opens `MainWindow` |
+| [MainEntryPoint](../xanderView/src/main/java/org/delafer/xanderView/gui/MainEntryPoint.java) | 70 | A | `main`: `--check-natives` → `NativeCheck`, `PlatformLaunch`, DPI props, shutdown hook, preload stores, opens `MainWindow` |
+| [NativeCheck](../xanderView/src/main/java/org/delafer/xanderView/gui/NativeCheck.java) | 33 | A | `--check-natives`: `LibraryLoader.checkAll()` + `report()` headless, exit 1 on a failure (PLAN B10, P7.2) |
 | [MainWindow](../xanderView/src/main/java/org/delafer/xanderView/gui/MainWindow.java) | 480 | A | SWT Display/shell setup, menu, SWT_AWT embedding, **all key bindings** (`bindKeyEvent`, `SWT.*` constants and chars), event loop |
 | [ImageLoader](../xanderView/src/main/java/org/delafer/xanderView/gui/ImageLoader.java) | 153 | A | Base of MainWindow. Decodes an entry (TurboJPEG/ImageIO), builds the caption, hands the image to the canvas |
 | [ImageCanvas](../xanderView/src/main/java/org/delafer/xanderView/gui/ImageCanvas.java) | 313 | A | AWT Canvas. Fit/zoom/pan/gamma/orientation state, `preRenderImage` pipeline, caption painting |
-| [PlatformLaunch](../xanderView/src/main/java/org/delafer/xanderView/gui/PlatformLaunch.java) | 135 | A | First step of `main`: relaunches once with `--add-exports=java.desktop/sun.awt.windows` (Windows classpath launch), `-XstartOnFirstThread` (macOS) or `GDK_BACKEND=x11` (Linux under Wayland) when missing |
+| [PlatformLaunch](../xanderView/src/main/java/org/delafer/xanderView/gui/PlatformLaunch.java) | 115 | A | First step of `main`: relaunches once with `-XstartOnFirstThread` (macOS) or `GDK_BACKEND=x11` (Linux under Wayland) when missing; the Windows `--add-exports` restart went with SWT 4.527 (P7) |
 
 ### gui/config — settings and persisted state
 | Class | LOC | St | Role |
@@ -51,8 +52,8 @@
 | [ImageDec](../xanderView/src/main/java/org/delafer/xanderView/file/entry/ImageDec.java) | 168 | A | Decorator: decrypts `.cry` and exposes the original name and type |
 | [ImageEnc](../xanderView/src/main/java/org/delafer/xanderView/file/entry/ImageEnc.java) | 111 | A | Decorator: encrypts as a copy source (F1) |
 | [ImageAimDec](../xanderView/src/main/java/org/delafer/xanderView/file/entry/ImageAimDec.java) | 129 | A | Decorator: first embedded file of an `.aim` container |
-| [Buf](../xanderView/src/main/java/org/delafer/xanderView/file/entry/Buf.java) | 56 | A | Closeable ByteBuffer + owner/channel. **Must be closed** |
-| [HelperFS](../xanderView/src/main/java/org/delafer/xanderView/file/entry/HelperFS.java) | 104 | A | Reads a file or prefix into `Buf` (mmap). Virtual-dir (`.xav`) checks |
+| [Buf](../xanderView/src/main/java/org/delafer/xanderView/file/entry/Buf.java) | 56 | A | Closeable ByteBuffer + the closer of its off-heap memory (FFM arena). **Must be closed** |
+| [HelperFS](../xanderView/src/main/java/org/delafer/xanderView/file/entry/HelperFS.java) | 75 | A | Reads a file or prefix into `Buf` (mmap); `arenaBuf` = arena-owned off-heap `Buf` (also `ImageZip` extracts). Virtual-dir (`.xav`) checks |
 | [Encryptor](../xanderView/src/main/java/org/delafer/xanderView/file/entry/Encryptor.java) | 258 | A | `.cry` encrypt/decrypt (AES-128/ECB/NoPadding, header with name). **Persisted format** |
 | [CipherKey](../xanderView/src/main/java/org/delafer/xanderView/file/entry/CipherKey.java) | 80 | A | Key derivation: SHA-256(salt + key file)[0..16] |
 | [EncodeName](../xanderView/src/main/java/org/delafer/xanderView/file/entry/EncodeName.java) | 244 | A | File-name sanitizing and transliteration for copies |
@@ -72,7 +73,7 @@
 | [IImageEntry](../xanderView/src/main/java/org/delafer/xanderView/interfaces/IImageEntry.java) | 37 | A | **Extension → `ImageType` map** |
 | [State](../xanderView/src/main/java/org/delafer/xanderView/general/State.java) | 5 | A | Result enum: Success, Ignore, Error, Special1… |
 | [Shutdown](../xanderView/src/main/java/org/delafer/xanderView/general/Shutdown.java) | 82 | A | Shutdown hook: persist, wait for tasks, interrupt threads |
-| [Hasher](../xanderView/src/main/java/org/delafer/xanderView/hash/Hasher.java) | 69 | A | xxHash64 of the first `HSIZE`=3072 bytes. **Persisted identity** |
+| [Hasher](../xanderView/src/main/java/org/delafer/xanderView/hash/Hasher.java) | 70 | A | xxHash64 (`XXHashFactory.safeInstance()`, pure Java) of the first `HSIZE`=3072 bytes. **Persisted identity** |
 | [SoundBeep](../xanderView/src/main/java/org/delafer/xanderView/sound/SoundBeep.java) | 68 | A | Plays `/audio/sound01.wav` |
 | [GammaCorrection](../xanderView/src/main/java/org/delafer/xanderView/process/GammaCorrection.java) | 70 | A | LUT gamma on a BufferedImage |
 
@@ -86,7 +87,7 @@
 ### scale — resizers
 | Class | LOC | St | Role |
 |---|---|---|---|
-| [ScaleFactory](../xanderView/src/main/java/org/delafer/xanderView/scale/ScaleFactory.java) | 134 | A | `SCALER` ids 1–12 → `IResizer`. Pick by image size |
+| [ScaleFactory](../xanderView/src/main/java/org/delafer/xanderView/scale/ScaleFactory.java) | 165 | A | `SCALER` ids 1–12 → `IResizer`. Pick by image size. CV_* resizers fall back to Lanczos3 when the OpenCV native is unavailable (P7.2) |
 | [ScalerHelper](../xanderView/src/main/java/org/delafer/xanderView/scale/ScalerHelper.java) | 132 | A | Parses the `Scaler` config string into size thresholds |
 | [IResizer](../xanderView/src/main/java/org/delafer/xanderView/scale/IResizer.java) | 10 | A | `resize(img, w, h)`, `name()` |
 | [ResizerBase](../xanderView/src/main/java/org/delafer/xanderView/scale/ResizerBase.java) | 16 | A | Base with filter index |
@@ -115,7 +116,7 @@
 Only the classes used by consumers are listed here; the full usage table is in [DEPENDENCIES.md §3](DEPENDENCIES.md).
 | Class | Role |
 |---|---|
-| [jni/LibraryLoader](../commons-j7/src/main/java/net/j7/commons/jni/LibraryLoader.java) | **Custom native loader** for all 8 natives. Picks the file name per platform (`lib` prefix, `.dylib`/`.jnilib`; P5.2), copies `<location>/libs/<os>/<arch>/<file>` into the AppData cache when missing or changed (exact compare, atomic publish), then `System.load` (JNI) or sets `jna.library.path` (JNA). Windows dependency map: `libavif` → `libgcc_s_seh-1`. Soft-fails. ([ARCHITECTURE §6](ARCHITECTURE.md)) |
+| [jni/LibraryLoader](../commons-j7/src/main/java/net/j7/commons/jni/LibraryLoader.java) | **Custom native loader** for all natives (~760 LOC). Picks the file name per platform (`lib` prefix, `.dylib`/`.jnilib`; P5.2). Manifest mode (source has `natives.sha256`): content-addressed cache `<AppData>/libs/<os>/<arch>/<bundle12>/`, copy once + SHA-256 verify + atomic move, trusted afterwards, `natives.deps` siblings loaded first, jar manifest as authority. Legacy mode: flat cache, exact compare. Default source: the jar's directory with `libs/`, else the jar. `report()`, `checkAll()`. Soft-fails. ([ARCHITECTURE §6](ARCHITECTURE.md), [NATIVES.md](NATIVES.md)) |
 | [io/SysInfo](../commons-j7/src/main/java/net/j7/commons/io/SysInfo.java) | OS/arch detection; per-OS app-data dir (`%APPDATA%\xanderView`, `~/.local/share/.xanderView`, `~/Library/Application Support/xanderView`) |
 | [io/FilePath](../commons-j7/src/main/java/net/j7/commons/io/FilePath.java) | Fluent path builder (`PathType.ApplicationData`, `forceExists`) |
 | [io/FileUtils](../commons-j7/src/main/java/net/j7/commons/io/FileUtils.java) | Extension, base name, path helpers |
@@ -134,8 +135,7 @@ Resource `commons-j7/src/main/resources/libs.properties` sets `location` = the n
 ## thirddep-j7 — `thirddep-j7/src/main/java/` + SWT flavor dirs (vendored; see [DEPENDENCIES.md §2](DEPENDENCIES.md))
 | Package | Entry points used by the app |
 |---|---|
-| `org/eclipse/swt`, win32 (`src/swt-win32/java`) | `widgets`, `graphics`, `layout`, `awt/SWT_AWT`, [internal/Library](../thirddep-j7/src/swt-win32/java/org/eclipse/swt/internal/Library.java) (patched loader) |
-| `org/eclipse/swt`, gtk/cocoa (`src/swt-stock/java`) | stock SWT 3.135 classes unpacked at build time; [internal/Library](../thirddep-j7/src/swt-stock/java/org/eclipse/swt/internal/Library.java) (upstream 3.135 + `LibraryLoader` patch) |
+| `org/eclipse/swt`, all flavors (`src/swt-stock/java`) | stock SWT 3.135 classes unpacked at build time (natives, signatures and the stock `Library` excluded); [internal/Library](../thirddep-j7/src/swt-stock/java/org/eclipse/swt/internal/Library.java) (upstream 3.135 + `LibraryLoader` patch) |
 | `net/sf/sevenzipjbinding` | [SevenZip](../thirddep-j7/src/main/java/net/sf/sevenzipjbinding/SevenZip.java) (patched loader), `IInArchive`, `impl.RandomAccess*Stream` |
 | `org/libjpegturbo/turbojpeg` | [TJDecompressor](../thirddep-j7/src/main/java/org/libjpegturbo/turbojpeg/TJDecompressor.java), [TJLoader](../thirddep-j7/src/main/java/org/libjpegturbo/turbojpeg/TJLoader.java) (patched) |
 | `com/mortennobel/imagescaling` | `ResampleOp`, `ResampleFilters`, `MultiStepRescaleOp` |
@@ -143,4 +143,4 @@ Resource `commons-j7/src/main/resources/libs.properties` sets `location` = the n
 | `vavi/imageio/avif`, `vavi/awt/image/{avif,jna/avif}` | AVIF ImageIO SPI (reader and writer), JNA `avif` → `libavif.dll`; [Avif](../thirddep-j7/src/main/java/vavi/awt/image/avif/jna/Avif.java) (patched) |
 | `vavi/imageio/jpegxl/jni`, `org/jpeg/jpegxl/wrapper` | JXL ImageIO SPI (reader), JNI `libjxl_jni`; [JpegXLImageReader](../thirddep-j7/src/main/java/vavi/imageio/jpegxl/jni/JpegXLImageReader.java) (patched) |
 | External needs | `vavi.util.Debug` (vavi-commons). `vavi.imageio.WrappedImageInputStream` is vendored (PLAN P1.3): [WrappedImageInputStream](../thirddep-j7/src/main/java/vavi/imageio/WrappedImageInputStream.java) |
-| Resources | [META-INF/services](../thirddep-j7/src/main/resources/META-INF/services) (ImageIO SPI registry); [SWTMessages*.properties](../thirddep-j7/src/swt-win32/resources/org/eclipse/swt/internal) (win32 flavor; from the removed SWT 4.3 jar) |
+| Resources | [META-INF/services](../thirddep-j7/src/main/resources/META-INF/services) (ImageIO SPI registry); `SWTMessages*.properties` come from the unpacked stock SWT jar (P7) |

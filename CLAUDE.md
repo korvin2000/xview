@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**xanderView** is a desktop image viewer and organizer. It is keyboard-driven, built with Java 21, and uses an SWT shell around an embedded AWT canvas. You browse a folder or archive at full screen. The app scales and rotates each image automatically and remembers your per-image adjustments. One keystroke copies the current image into a target folder; copies are deduplicated by content hash and can optionally be AES-encrypted.
+**xanderView** is a desktop image viewer and organizer. It is keyboard-driven, built with Java 26, and uses an SWT shell around an embedded AWT canvas. You browse a folder or archive at full screen. The app scales and rotates each image automatically and remembers your per-image adjustments. One keystroke copies the current image into a target folder; copies are deduplicated by content hash and can optionally be AES-encrypted.
 Platforms:
 - **Works today:** Windows x64.
 - **Target:** Windows, Linux and macOS on x86_64, with aarch64 optional (PLAN P5).
@@ -17,6 +17,7 @@ The repo is **poorly maintained and mid-modernization**. [PLAN.md](PLAN.md) is t
 | One line per class, all modules | [docs/SOURCE_MAP.md](docs/SOURCE_MAP.md) |
 | Runtime flow, threads, data model, extension points | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Libraries, vendored code, native DLLs | [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) |
+| Natives per platform: sources, bundles, loader modes, dist zips | [docs/NATIVES.md](docs/NATIVES.md) |
 | Toolchain, build blockers, running | [docs/BUILD.md](docs/BUILD.md) |
 | Behavior: formats, keys, config keys, files on disk | [SPEC.md](SPEC.md) |
 | Goals, philosophy, non-goals | [INTENT.md](INTENT.md) |
@@ -25,11 +26,11 @@ The repo is **poorly maintained and mid-modernization**. [PLAN.md](PLAN.md) is t
 | Module | Role | javac level |
 |---|---|---|
 | `commons-j7/` | Home-grown utilities: `StringUtils`, `FileUtils`, `FilePath`, `jni.LibraryLoader`, … (dead packages removed in P2.3). | 21 |
-| `thirddep-j7/` | **Vendored third-party sources, patched so their natives load through `LibraryLoader`:** SWT (win32 4.527 in `src/swt-win32`; gtk/cocoa = stock 3.135 classes + patched `Library` in `src/swt-stock`), 7-Zip-JBinding 16.02-2.01, TurboJPEG, Luciad WebP, vavi AVIF (JNA), JXL (JNI), mortennobel scaling. Also custom ImageIO SPIs. | 21 |
+| `thirddep-j7/` | **Vendored third-party sources, patched so their natives load through `LibraryLoader`:** SWT = stock 3.135 classes unpacked at build time + patched `Library` in `src/swt-stock` (all flavors; the vendored win32 4.527 sources were deleted in P7), 7-Zip-JBinding 16.02-2.01, TurboJPEG, Luciad WebP, vavi AVIF (JNA), JXL (JNI), mortennobel scaling. Also custom ImageIO SPIs. | 21 |
 | `xanderView/` | The app. Main class: `org.delafer.xanderView.gui.MainEntryPoint` | 21 |
 
 ## Commands
-Use the Maven Wrapper (Maven 3.9.16, downloaded once). Java isn't on PATH here: set `JAVA_HOME` to `~/.jdks/temurin-21.0.9` (IntelliJ's bundled Maven 3.9.16 also works; path in [BUILD.md](docs/BUILD.md)). **`./mvnw -B -DskipTests package` succeeds** with no manual setup (verified 2026-10-12); OpenCV comes from the WPILib Maven repo. BUILD.md explains what is still hard: custom natives, jitpack-only vavi-commons.
+Use the Maven Wrapper (Maven 3.9.16, downloaded once). Java isn't on PATH here: set `JAVA_HOME` to `devtools/jdk-26.0.2.1+1` (Temurin 26, untracked; `javac-check.sh` finds it itself) (IntelliJ's bundled Maven 3.9.16 also works; path in [BUILD.md](docs/BUILD.md)). **`./mvnw -B -DskipTests package` succeeds** with no manual setup (verified 2026-10-12); OpenCV comes from the WPILib Maven repo. BUILD.md explains what is still hard: custom natives, jitpack-only vavi-commons.
 ```bash
 bash tools/javac-check.sh
 ```
@@ -45,10 +46,10 @@ java -jar xanderView/target/xanderview-j7-1.0.0.jar "D:\pics"
 1. `tools/javac-check.sh` compiles all modules (Windows SWT flavor) with plain javac in about 30 s. Use it as the quick compile check.
 2. `./mvnw -B -DskipTests package` builds everything; only the app jar is shaded. Windows builds into `target/`.
 3. `-Dswt.flavor=<ws>.<os>.<arch>` (`gtk.linux.x86_64|aarch64`, `cocoa.macosx.x86_64|aarch64`) cross-builds a Linux/macOS jar into `target-<flavor>/`.
-4. The last command runs the app; no JVM flags are needed (manifest `Add-Exports`). The argument can be a file, a directory or an archive; without one, the app resumes from `_zlst.csv`. IDE launches without `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` restart once with it (`PlatformLaunch`); add the flag to debug in the same JVM.
+4. The last command runs the app; no JVM flags are needed (manifest `Enable-Native-Access`; no `--add-exports` since P7). The argument can be a file, a directory or an archive; without one, the app resumes from `_zlst.csv`. `--check-natives` instead of a path loads every native of the shipped manifest headless and exits.
 
 - **Tests: none.** The repo has 0 `@Test`. The files under `*/src/test` are scratch `main()` programs; run them one at a time from the IDE. "Run a single test" does not apply until JUnit is added (PLAN P3.1).
-- **Natives are not in git.** The source is `C:\Program Files\xview\libs\windows\amd64\`, which is what `libs.properties` `location` points to (override: `-Dxview.libs.location` or env `XVIEW_LIBS_LOCATION`). The deployed jar is `C:\Program Files\xview\xanderview.jar`. On first start they are copied to the persistent cache `%APPDATA%\xanderView\libs\windows\amd64\`, and the app loads them from there. All 8 DLLs are required: `swt`, `lib7-Zip-JBinding`, `libgcc_s_seh-1`, `turbojpeg`, `webp-imageio`, `libavif`, `libjxl_jni`, `opencv_java460`. Details are in [DEPENDENCIES §4](docs/DEPENDENCIES.md#natives).
+- **Natives are not in git.** Since P7 they are upstream builds pinned by SHA-256 in `natives/<platform>.tsv`, bundled by `tools/natives/bundle.sh` and shipped as `libs/<os>/<arch>/` + `natives.sha256` next to the jar (per-platform dist zips; the build downloads the bundle when `xview.natives.skip=false`, or takes `-Dxview.natives.dir`). The loader copies each native once into `%APPDATA%\xanderView\libs\<os>\<arch>\<bundle12>\` and verifies it. The owner's deployed install `C:\Program Files\xview\libs\windows\amd64\` (no manifest) still works in the legacy exact-compare mode via `-Dxview.libs.location`/`XVIEW_LIBS_LOCATION`. Windows x64 natives: `swt`, `lib7-Zip-JBinding`, `turbojpeg`, `webp-imageio`, `libavif`, `libjxl_jni`, `opencv_java460` (OpenCV also needs `concrt140.dll` from the VC++ redistributable). `java -jar xanderview.jar --check-natives` checks them. Details: [NATIVES.md](docs/NATIVES.md), [DEPENDENCIES §4](docs/DEPENDENCIES.md#natives).
 ## Big picture (details: [ARCHITECTURE.md](docs/ARCHITECTURE.md))
 - **UI**: `MainWindow` (SWT `Display`, `MultiShell` = a windowed shell plus a fullscreen shell) → EMBEDDED `Composite` → `SWT_AWT` frame → AWT `ImageCanvas`. All keys go through one `Display` filter into `MainWindow.bindKeyEvent`, a switch on `SWT.*` key constants and character literals.
 - **Playlist**: `CommonContainer(Ext)` iterates a sorted list of `ImageAbstract<E>` entries. The entries come from an `IAbstractReader`: `FileReader` for directories (with a WatchService and optional recursion into archives) or `SevenZipReader` for zip/rar/7z/jzip.
@@ -61,6 +62,7 @@ java -jar xanderView/target/xanderview-j7-1.0.0.jar "D:\pics"
   - Then it calls `System.load` (JNI), or only sets `jna.library.path` (JNA: libavif).
   - A missing library **soft-fails**: a logged warning, then a later `UnsatisfiedLinkError` (`tryLoadLibrary` lets a caller fail fast). On Linux/macOS it also tries `lib<name>` and `.dylib`/`.jnilib`.
   - Vendored libraries are patched to call it ([ARCHITECTURE §6](docs/ARCHITECTURE.md)).
+  - Manifest mode (P7): a source with `natives.sha256` gets a content-addressed cache dir per bundle, verified once, trusted afterwards; `natives.deps` siblings are loaded first; the jar carries the manifest it was built with.
 
 ## Rules
 - **Keep the custom native-loading design.** Don't replace vendored native-backed libraries with stock jars that bundle and self-extract natives, and don't replace the minified OpenCV jar with the official one. Every native goes through `LibraryLoader` and the custom builds ([DEPENDENCIES §0](docs/DEPENDENCIES.md)).

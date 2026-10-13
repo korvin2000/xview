@@ -94,18 +94,18 @@ long t = System.currentTimeMillis();
                 baos.write(b, 0, r);
             }
             int l = baos.size();
-Debug.println(Level.FINE, "size: " + l);
+            Debug.println(Level.FINE, "size: " + l);
             ByteBuffer bb = ByteBuffer.allocateDirect(l);
             bb.put(baos.toByteArray(), 0, l);
 
             ImageData imageData = Decoder.decode(bb, PixelFormat.RGBA_8888);
-Debug.println("image: " + imageData.width + "x" + imageData.height);
-Debug.println("decoded: " + imageData.pixels.capacity());
+            //Debug.println("image: " + imageData.width + "x" + imageData.height);
+            //Debug.println("decoded: " + imageData.pixels.capacity());
 
             image = new BufferedImage(imageData.width, imageData.height, BufferedImage.TYPE_4BYTE_ABGR);
             ByteBuffer decoded = (ByteBuffer) imageData.pixels;
             byte[] raster = ((DataBufferByte) image.getRaster().getDataBuffer()).getData();
-Debug.println("raster: " + raster.length);
+            //Debug.println("raster: " + raster.length);
             int p = 0;
             for (int y = 0; y < imageData.height; y++) {
                 for (int x = 0; x < imageData.width; x++) {

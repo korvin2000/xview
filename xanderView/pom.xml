@@ -126,6 +126,12 @@
 								<transformer
 									implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
 							</transformers>
+							<artifactSet>
+								<excludes>
+									<!-- the stock SWT jar is an IDE-only dependency; its classes come from thirddep-j7 (unpacked, patched Library) -->
+									<exclude>org.eclipse.platform:*</exclude>
+								</excludes>
+							</artifactSet>
 							<filters>
 
 								<!-- Exclude of dummy.sf and dummy.dsa -->
@@ -208,6 +214,20 @@
 		<dependency>
 			<groupId>net.j7.thirddep</groupId>
 			<artifactId>thirddep-j7</artifactId>
+		</dependency>
+		<!-- IDE only (IntelliJ): the stock SWT classes for compiling and running without the Maven unpack in thirddep; optional
+		     (not transitive) and excluded from the shaded jar, which gets its SWT classes from thirddep-j7 -->
+		<dependency>
+			<groupId>org.eclipse.platform</groupId>
+			<artifactId>org.eclipse.swt.${swt.ws}.${swt.os}.${swt.arch}</artifactId>
+			<version>${swt.stock.version}</version>
+			<optional>true</optional>
+			<exclusions>
+				<exclusion>
+					<groupId>org.eclipse.platform</groupId>
+					<artifactId>org.eclipse.swt</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>edu.wpi.first.thirdparty.frc2023.opencv</groupId>

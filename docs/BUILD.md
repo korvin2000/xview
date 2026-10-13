@@ -98,6 +98,7 @@ java -jar xanderView/target/xanderview-j7-1.0.0.jar "D:\pics\holiday"
 ```
 - No JVM flags are needed with `java -jar` (manifest `Enable-Native-Access`); `--add-exports` is not needed any more (P7).
 - From the IDE (classpath launch): main class `org.delafer.xanderView.gui.MainEntryPoint`; add `--enable-native-access=ALL-UNNAMED` to the VM options to silence the JNI warnings. Natives: `-Dxview.libs.location=<dir containing libs/>` (a bundle such as `xanderView/target/natives/<sha256>`, or the deployed `C:\Program Files\xview`); without it a classpath launch is cache-only.
+- IntelliJ: import the Maven project and reload it after pom changes; the stock SWT jar is declared as an IDE-only dependency (DEPENDENCIES §1), so `org.eclipse.swt.internal.Library` and the app's SWT imports resolve and the Application run configuration works without a prior Maven build. An IDE build may delete the Maven-unpacked SWT classes from `thirddep-j7/target/classes`; the next Maven build re-unpacks them (`overWriteReleases`).
 - Linux/macOS: `PlatformLaunch` restarts the app once when needed: with `-XstartOnFirstThread` on macOS, and with `GDK_BACKEND=x11` in a Wayland session on Linux (`SWT_AWT` needs X11). Disable it with `-Dxview.relaunch=false` if your launcher already sets these.
 - Logging: slf4j-simple to stderr at `info`; more detail with `-Dorg.slf4j.simpleLogger.defaultLogLevel=debug` (see `xanderView/src/main/resources/simplelogger.properties`).
 - Prerequisites:

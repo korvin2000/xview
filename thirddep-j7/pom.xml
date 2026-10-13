@@ -72,6 +72,8 @@
                         </goals>
                         <configuration>
                             <skip>${swt.unpack.skip}</skip>
+                            <!-- ignore the 'already unpacked' marker: an IDE build may have deleted the unpacked classes since -->
+                            <overWriteReleases>true</overWriteReleases>
                             <artifactItems>
                                 <artifactItem>
                                     <groupId>org.eclipse.platform</groupId>
@@ -130,6 +132,21 @@
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna</artifactId>
             <version>5.15.0</version>
+        </dependency>
+        <!-- compile-only: the IDE build does not run the unpack above, so the patched Library.java and the app's SWT imports
+             need the stock classes on the classpath (IntelliJ). The jar itself is never shipped: Maven unpacks it into the
+             classes (natives, stock Library and signatures stripped) and the app's shade excludes the artifact. -->
+        <dependency>
+            <groupId>org.eclipse.platform</groupId>
+            <artifactId>org.eclipse.swt.${swt.ws}.${swt.os}.${swt.arch}</artifactId>
+            <version>${swt.stock.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion><!-- its pom points at the unresolvable org.eclipse.swt.${osgi.platform} -->
+                    <groupId>org.eclipse.platform</groupId>
+                    <artifactId>org.eclipse.swt</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 </project>

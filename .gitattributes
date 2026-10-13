@@ -1,3 +1,13 @@
 # Maven Wrapper scripts must keep their native line endings on every checkout
 mvnw text eol=lf
 *.cmd text eol=crlf
+# native trees (docs/NATIVES.md §3): the loader hashes natives.sha256 for the bundle id, so keep LF on every checkout
+natives/**/natives.sha256 text eol=lf
+natives/**/natives.deps text eol=lf
+natives/**/THIRD-PARTY-NOTICES.md text eol=lf
+natives/*.tsv text eol=lf
+natives/**/*.dll binary
+natives/**/*.so binary
+natives/**/*.so.* binary
+natives/**/*.dylib binary
+natives/**/*.jnilib binary

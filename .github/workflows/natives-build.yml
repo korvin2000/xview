@@ -169,8 +169,10 @@ jobs:
           path: out/libjxl_jni-${{ matrix.platform }}.so
           if-no-files-found: error
 
-  # MSVC (cl, static CRT) first; if it fails, clang-cl (upstream's Windows toolset); then llvm-mingw with -static.
-  # llvm-mingw is always installed: its llvm-readobj/llvm-objdump inspect whichever DLL was built.
+  # clang-cl (VS ClangCL toolset = upstream's Windows toolset, static CRT /MT) first; if it fails, llvm-mingw with -static;
+  # MSVC cl last: highway compiles only its EMU128 (scalar) target with cl on Arm64 (no __ARM_NEON; the probe step
+  # prints it), while both clang builds get the NEON target. llvm-mingw is always installed: its llvm-readobj and
+  # llvm-objdump inspect whichever DLL was built.
   jxl-jni-windows-arm64:
     runs-on: windows-11-arm
     timeout-minutes: 90
@@ -237,19 +239,8 @@ jobs:
           echo "== probe: llvm-mingw"
           "$(cygpath -u "$LLVM_MINGW_BIN")/aarch64-w64-mingw32-clang++" -std=c++17 -Ilibjxl/third_party/highway -c probe/probe.cc -o probe/p.o 2>&1 \
             | grep -o 'hwy-probe: [A-Za-z0-9_ ]*' | sort -u || true
-      - name: Build with MSVC (cl, ARM64, /MT)
-        id: msvc
-        continue-on-error: true
-        run: |
-          set -euxo pipefail
-          cmake -S libjxl -B build-msvc -A ARM64 $JXL_CMAKE_FLAGS -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-          cmake --build build-msvc --config Release --target jxl_jni --parallel
-          src="$(find build-msvc -name 'jxl_jni.dll' | head -1)"; test -n "$src"
-          bash "$RUNNER_TEMP/check-pe.sh" "$src"
-          mkdir -p out; cp "$src" "$OUT"; echo "MSVC cl (VS generator, -A ARM64, /MT)" > out/toolchain.txt
       - name: Build with clang-cl (VS ClangCL toolset, ARM64, /MT)
         id: clangcl
-        if: steps.msvc.outcome != 'success'
         continue-on-error: true
         run: |
           set -euxo pipefail
@@ -257,10 +248,13 @@ jobs:
           cmake --build build-clangcl --config Release --target jxl_jni --parallel
           src="$(find build-clangcl -name 'jxl_jni.dll' | head -1)"; test -n "$src"
           bash "$RUNNER_TEMP/check-pe.sh" "$src"
-          mkdir -p out; cp "$src" "$OUT"; echo "clang-cl (VS ClangCL toolset, -A ARM64, /MT)" > out/toolchain.txt
+          v="$(sed -n 's/^set(CMAKE_CXX_COMPILER_VERSION "\(.*\)")/\1/p' build-clangcl/CMakeFiles/*/CMakeCXXCompiler.cmake | head -1)"
+          gen="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' build-clangcl/CMakeCache.txt)"
+          mkdir -p out; cp "$src" "$OUT"; echo "clang-cl ${v:-?} ($gen, -A ARM64 -T ClangCL, /MT)" > out/toolchain.txt
       - name: Build with llvm-mingw (aarch64-w64-mingw32-clang, -static)
         id: mingw
-        if: steps.msvc.outcome != 'success' && steps.clangcl.outcome != 'success'
+        if: steps.clangcl.outcome != 'success'
+        continue-on-error: true
         run: |
           set -euxo pipefail
           export PATH="$(cygpath -u "$LLVM_MINGW_BIN"):$PATH"
@@ -274,6 +268,17 @@ jobs:
           llvm-strip --strip-all "$OUT"
           bash "$RUNNER_TEMP/check-pe.sh" "$OUT"
           echo "llvm-mingw $LLVM_MINGW_VERSION ($(aarch64-w64-mingw32-clang --version | head -1)), -static" > out/toolchain.txt
+      - name: Build with MSVC (cl, ARM64, /MT; highway EMU128 only)
+        id: msvc
+        if: steps.clangcl.outcome != 'success' && steps.mingw.outcome != 'success'
+        run: |
+          set -euxo pipefail
+          cmake -S libjxl -B build-msvc -A ARM64 $JXL_CMAKE_FLAGS -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build build-msvc --config Release --target jxl_jni --parallel
+          src="$(find build-msvc -name 'jxl_jni.dll' | head -1)"; test -n "$src"
+          bash "$RUNNER_TEMP/check-pe.sh" "$src"
+          v="$(sed -n 's/^set(CMAKE_CXX_COMPILER_VERSION "\(.*\)")/\1/p' build-msvc/CMakeFiles/*/CMakeCXXCompiler.cmake | head -1)"
+          mkdir -p out; cp "$src" "$OUT"; echo "MSVC cl ${v:-?} (-A ARM64, /MT; highway EMU128 only)" > out/toolchain.txt
       - name: Inspect
         run: |
           set -eu

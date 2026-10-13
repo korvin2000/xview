@@ -83,7 +83,9 @@ jobs:
           strip -x "$f"
           codesign --force --sign - "$f"
           codesign --verify --verbose "$f"
-          deps="$(otool -L "$f" | tail -n +2 | awk '{print $1}')"; syms="$(nm -gU "$f")"
+          # otool -L also lists the dylib's own install name (LC_ID_DYLIB, @rpath/libjxl_jni.dylib): not a dependency
+          id="$(otool -D "$f" | tail -n +2)"
+          deps="$(otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -vxF "$id" || true)"; syms="$(nm -gU "$f")"
           echo "== toolchain: $(c++ --version | head -1), SDK $(xcrun --show-sdk-version)"
           echo "== file"; file "$f"
           echo "== dependencies"; echo "$deps"
@@ -213,6 +215,28 @@ jobs:
         run: |
           git clone --depth 1 --branch "${{ inputs.libjxl_ref }}" https://github.com/libjxl/libjxl.git libjxl
           git -C libjxl submodule update --init --depth 1 $LIBJXL_SUBMODULES
+      # Highway has no run-time dispatch on Windows/Arm: the static target is what each compiler gets.
+      - name: Probe highway targets per compiler
+        continue-on-error: true
+        run: |
+          mkdir -p probe
+          {
+            echo '#include "hwy/detect_targets.h"'
+            for t in SVE2 SVE NEON_BF16 NEON NEON_WITHOUT_AES EMU128 SCALAR; do
+              printf '#if HWY_TARGETS & HWY_%s\n#pragma message("hwy-probe: compiled %s")\n#endif\n' $t $t
+              printf '#if HWY_STATIC_TARGET == HWY_%s\n#pragma message("hwy-probe: static %s")\n#endif\n' $t $t
+            done
+            printf '#ifdef __ARM_NEON\n#pragma message("hwy-probe: __ARM_NEON defined")\n#endif\nint hwy_probe;\n'
+          } > probe/probe.cc
+          printf 'cmake_minimum_required(VERSION 3.16)\nproject(p CXX)\nadd_library(p OBJECT probe.cc)\ntarget_include_directories(p PRIVATE "%s")\n' \
+            "$(cygpath -m "$PWD/libjxl/third_party/highway")" > probe/CMakeLists.txt
+          for ts in "" "-T ClangCL"; do
+            echo "== probe: VS ${ts:-cl}"
+            cmake -S probe -B "probe/b${ts:+-clangcl}" -A ARM64 $ts >/dev/null && cmake --build "probe/b${ts:+-clangcl}" --config Release 2>&1 | grep -o 'hwy-probe: [A-Za-z0-9_ ]*' | sort -u || true
+          done
+          echo "== probe: llvm-mingw"
+          "$(cygpath -u "$LLVM_MINGW_BIN")/aarch64-w64-mingw32-clang++" -std=c++17 -Ilibjxl/third_party/highway -c probe/probe.cc -o probe/p.o 2>&1 \
+            | grep -o 'hwy-probe: [A-Za-z0-9_ ]*' | sort -u || true
       - name: Build with MSVC (cl, ARM64, /MT)
         id: msvc
         continue-on-error: true

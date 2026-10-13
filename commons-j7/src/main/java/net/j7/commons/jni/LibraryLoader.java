@@ -934,13 +934,31 @@ public class LibraryLoader {
 		} catch (IOException ignore) {}
 		String loc = libUrl.toExternalForm();
 		int idx = loc.lastIndexOf(".jar!");
-		if (idx < 0) return "";
+		if (idx < 0) return explodedBuildLocation();
 		String jar = loc.substring(loc.startsWith("jar:") ? 4 : 0, idx + 4);
 		try {
 			Path dir = Paths.get(new URI(jar)).toAbsolutePath().getParent();
 			if (null != dir && Files.isDirectory(dir.resolve("libs").resolve(basePath).resolve(arch))) return fixBs(dir.toUri().toString());
 		} catch (URISyntaxException | IllegalArgumentException | FileSystemNotFoundException ignore) {}
 		return loc.substring(0, idx + 5) + '/';
+	}
+
+	/**
+	 * Classpath launch from an exploded build (IDE): the counterpart of the jar's directory, i.e. the directory that
+	 * contains the classes root holding the natives manifest ({@code target/} for
+	 * {@code target/classes/libs/<os>/<arch>/natives.sha256}) if it has {@code libs/<os>/<arch>/} (staged there by the
+	 * Maven build); "" otherwise (cache only).
+	 */
+	private String explodedBuildLocation() {
+		URL manifest = LibraryLoader.class.getResource(libDir("/") + MANIFEST);
+		if (null == manifest || !"file".equals(manifest.getProtocol())) return "";
+		try {
+			Path classes = Paths.get(manifest.toURI());
+			for (int i = 0; i < 4 && null != classes; i++) classes = classes.getParent(); // <classes>/libs/<os>/<arch>/natives.sha256
+			Path dir = null == classes ? null : classes.getParent();
+			if (null != dir && Files.isDirectory(dir.resolve("libs").resolve(basePath).resolve(arch))) return fixBs(dir.toUri().toString());
+		} catch (URISyntaxException | IllegalArgumentException | FileSystemNotFoundException ignore) {}
+		return "";
 	}
 
 	private static String toLocation(String loc) {

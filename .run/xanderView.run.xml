@@ -1,0 +1,16 @@
+<component name="ProjectRunConfigurationManager">
+  <!-- Shared IDE launch (docs/BUILD.md). Maven builds before launch instead of the IDE build: only Maven unpacks the stock SWT
+       classes into thirddep-j7/target/classes and stages the natives into xanderView/target/libs/, and an IDE Rebuild deletes
+       the former. Provided scope stays off the classpath: the stock SWT jar is signed and must not meet the unpacked classes. -->
+  <configuration default="false" name="xanderView" type="Application" factoryName="Application">
+    <option name="INCLUDE_PROVIDED_SCOPE" value="false" />
+    <option name="MAIN_CLASS_NAME" value="org.delafer.xanderView.gui.MainEntryPoint" />
+    <module name="xanderview-j7" />
+    <option name="VM_PARAMETERS" value="--enable-native-access=ALL-UNNAMED" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <shortenClasspath name="ARGS_FILE" />
+    <method v="2">
+      <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/pom.xml" goal="-pl xanderView -am compile" />
+    </method>
+  </configuration>
+</component>

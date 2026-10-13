@@ -58,6 +58,11 @@
 								<copy todir="${project.build.outputDirectory}/libs/${xview.libdir}" failonerror="false" quiet="true">
 									<fileset dir="${xview.natives.libs}" includes="natives.sha256,natives.deps" erroronmissingdir="false"/>
 								</copy>
+								<!-- the whole bundle next to the jar and the classes (target/libs/<os>/<arch>/): java -jar target/<jar> and
+								     IDE classpath launches find it like an unpacked dist (LibraryLoader location rules); sync drops stale files -->
+								<sync todir="${project.build.directory}/libs/${xview.libdir}" failonerror="false">
+									<fileset dir="${xview.natives.libs}" erroronmissingdir="false"/>
+								</sync>
 							</target>
 						</configuration>
 					</execution>
@@ -215,13 +220,14 @@
 			<groupId>net.j7.thirddep</groupId>
 			<artifactId>thirddep-j7</artifactId>
 		</dependency>
-		<!-- IDE only (IntelliJ): the stock SWT classes for compiling and running without the Maven unpack in thirddep; optional
-		     (not transitive) and excluded from the shaded jar, which gets its SWT classes from thirddep-j7 -->
+		<!-- IDE compile only (IntelliJ): the stock SWT classes for compiling without the Maven unpack in thirddep. provided, never
+		     on the run classpath: the jar is signed, and a signed class next to the unsigned patched Library (or other unpacked
+		     classes) in one package is a SecurityException. Run-time SWT classes come from thirddep-j7 (unpack). -->
 		<dependency>
 			<groupId>org.eclipse.platform</groupId>
 			<artifactId>org.eclipse.swt.${swt.ws}.${swt.os}.${swt.arch}</artifactId>
 			<version>${swt.stock.version}</version>
-			<optional>true</optional>
+			<scope>provided</scope>
 			<exclusions>
 				<exclusion>
 					<groupId>org.eclipse.platform</groupId>

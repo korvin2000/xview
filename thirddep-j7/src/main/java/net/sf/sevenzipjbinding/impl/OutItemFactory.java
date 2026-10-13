@@ -10,6 +10,7 @@ import net.sf.sevenzipjbinding.IOutItemAllFormats;
 import net.sf.sevenzipjbinding.IOutItemBZip2;
 import net.sf.sevenzipjbinding.IOutItemBase;
 import net.sf.sevenzipjbinding.IOutItemGZip;
+import net.sf.sevenzipjbinding.IOutItemXz;
 import net.sf.sevenzipjbinding.IOutItemTar;
 import net.sf.sevenzipjbinding.IOutItemZip;
 import net.sf.sevenzipjbinding.PropID;
@@ -97,6 +98,10 @@ public class OutItemFactory<T extends IOutItemBase> {
             fillDefaultValuesGZip(outItem);
             break;
 
+        case XZ:
+            fillDefaultValuesXz(outItem);
+            break;
+
         case TAR:
             fillDefaultValuesTar(outItem);
             break;
@@ -122,6 +127,9 @@ public class OutItemFactory<T extends IOutItemBase> {
     }
 
     private void fillDefaultValuesGZip(IOutItemGZip outItem) {
+    }
+
+    private void fillDefaultValuesXz(IOutItemXz outItem) {
     }
 
     private void fillDefaultValuesTar(IOutItemTar outItem) {
@@ -151,8 +159,8 @@ public class OutItemFactory<T extends IOutItemBase> {
      * 
      * @return a new instance
      * @throws SevenZipException
-     *             7-Zip or 7-Zip-JBinding error occur. Use {@link SevenZipException#printStackTraceExtended()} to get
-     *             stack traces of this SevenZipException and of the all thrown 'cause by' exceptions.
+     *             7-Zip or 7-Zip-JBinding error occurs. Use {@link SevenZipException#printStackTraceExtended()} to get
+     *             stack traces of this SevenZipException and of all thrown 'caused by' exceptions.
      */
     @SuppressWarnings("unchecked")
     public T createOutItem(int updateOldArchiveItemIndex) throws SevenZipException {
@@ -182,8 +190,8 @@ public class OutItemFactory<T extends IOutItemBase> {
      * 
      * @return a new instance
      * @throws SevenZipException
-     *             7-Zip or 7-Zip-JBinding error occur. Use {@link SevenZipException#printStackTraceExtended()} to get
-     *             stack traces of this SevenZipException and of the all thrown 'cause by' exceptions.
+     *             7-Zip or 7-Zip-JBinding error occurs. Use {@link SevenZipException#printStackTraceExtended()} to get
+     *             stack traces of this SevenZipException and of all thrown 'caused by' exceptions.
      */
     @SuppressWarnings("unchecked")
     public T createOutItemAndCloneProperties(int updateOldArchiveItemIndex) throws SevenZipException {

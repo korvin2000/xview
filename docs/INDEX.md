@@ -28,7 +28,7 @@ tools/ ─ javac-check.sh (compile without Maven), check-docs.sh (doc drift)
 | Understand the runtime flow | [ARCHITECTURE.md §2–5](ARCHITECTURE.md) | — |
 | Change or add a key binding | [SPEC §5](../SPEC.md) | `gui/MainWindow.bindKeyEvent` |
 | Support a new image format | [ARCHITECTURE §7](ARCHITECTURE.md) | `interfaces/IImageEntry`, `file/entry/ImageAbstract`, `gui/ImageLoader`, thirddep `META-INF/services` |
-| Fix decoding of a format | [DEPENDENCIES §2](DEPENDENCIES.md) | `gui/ImageLoader`; JPEG → `org/libjpegturbo`; WebP/AVIF/JXL → thirddep SPI |
+| Fix decoding of a format | [DEPENDENCIES §2](DEPENDENCIES.md) | `gui/ImageLoader`; JPEG → `codec/TurboJpeg` (FFM); WebP → `dev/matrixlab/webp4j` (thirddep); AVIF/JXL → thirddep SPI |
 | Change scaling quality or speed | [SPEC §8 `Scaler`](../SPEC.md) | `scale/ScaleFactory`, `scale/ScalerHelper`, `scale/Resizer*` |
 | Change zoom/pan/gamma/rotation | [SPEC §4](../SPEC.md) | `gui/ImageCanvas`, `orientation/*`, `process/GammaCorrection` |
 | Change what is saved per image | [SPEC §7](../SPEC.md) (persisted!) | `gui/config/OrientationStore` |

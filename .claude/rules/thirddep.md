@@ -15,9 +15,9 @@ paths:
   Mark each patched spot `// xview-patch: <reason>`, and record it in `docs/DEPENDENCIES.md` §2.
 - Existing patches route loading to LibraryLoader (load names in parentheses):
   - SWT, all flavors: `src/swt-stock/.../internal/Library.loadLibrary` (upstream 3.135 stems via `LibraryLoader.tryLoadLibrary`; throws if none loads)
-  - `SevenZip.ensureLibraryIsInitialized` (`lib7-Zip-JBinding`; the `libgcc_s_seh-1` request was removed in P7)
-  - `TJLoader` (`turbojpeg`, direct `LibraryLoader` call)
-  - `WebP` (`webp-imageio`)
+  - `SevenZip.ensureLibraryIsInitialized` (`lib7-Zip-JBinding`; sources = the owner's fork korvin2000/sevenzipjbinding 26.03-2.3 since 2026-10-13, plus the owner's `impl/RandomAccessNioStream`)
+  - TurboJPEG: nothing vendored since 2026-10-13; the app's `codec/TurboJpeg` binds `libturbojpeg` through the FFM API (load name `turbojpeg`)
+  - `dev.matrixlab.webp4j.internal.NativeWebP` static init (`webp4j`): decoder subset of webp4j 2.5.0, vendored verbatim except the loader call and the trimming (the JNI library's `JNI_OnLoad` caches `WebPBitstreamFeatures`, `AnimationInfo`, `AnimatedWebPData`, so those model classes must stay)
   - `Avif` (`checkLibrary("libavif", false)` → JNA `avif`)
   - `JpegXLImageReader` (`libjxl_jni`)
 - A load name **must equal the file stem** in `libs/<os>/<arch>/` (on Linux/macOS `LibraryLoader` also tries `lib<name>`, and `.dylib`/`.jnilib` on macOS). Renaming a load name requires renaming the DLL in the native source dir **and** in the user's cache.

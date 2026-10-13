@@ -24,10 +24,16 @@
     </files>
     <fileSets>
         <fileSet>
-            <directory>${xview.natives.dir}</directory>
+            <directory>${xview.natives.libs}</directory>
+            <outputDirectory>libs/${xview.libdir}</outputDirectory>
+            <excludes>
+                <exclude>THIRD-PARTY-NOTICES.md</exclude>
+            </excludes>
+        </fileSet>
+        <fileSet>
+            <directory>${xview.natives.libs}</directory>
             <outputDirectory>/</outputDirectory>
             <includes>
-                <include>libs/**</include>
                 <include>THIRD-PARTY-NOTICES.md</include>
             </includes>
         </fileSet>

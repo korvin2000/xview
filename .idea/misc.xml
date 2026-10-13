@@ -8,6 +8,11 @@
         <option value="$PROJECT_DIR$/pom.xml" />
       </list>
     </option>
+    <option name="enabledProfiles">
+      <list>
+        <option value="swt-win32-x86_64" />
+      </list>
+    </option>
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="temurin-26-unbi" project-jdk-type="JavaSDK" />
 </project>

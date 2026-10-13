@@ -72,9 +72,10 @@ Subclasses specialize it: `ImageFS` computes the CRCs and falls back to identifi
 ```
 key → CommonContainerExt.next()/prev() → ImageAbstract
  → ImageLoader.loadImage: switch ImageType
-     JPEG  → TJDecompressor (scaling denom 1/2/4/8 from getDenom(image vs screen)) ─fail→ ImageIO
+     JPEG  → codec/TurboJpeg (FFM: tj3DecompressHeader → denom 1/2/4/8 from getDenom(image vs screen) → tj3Decompress8 into the image's byte[]) ─fail/LinkageError→ ImageIO
      AIM   → recurse with ImageAimDec
-     other → ImageIO.read (WebP/AVIF/JXL via META-INF/services in thirddep-j7)
+     WEBP  → WebPCodec.decodeImage (vendored webp4j decoder, JNI, packed ARGB/RGB int image)
+     other → ImageIO.read (AVIF/JXL via META-INF/services in thirddep-j7)
  → caption (+"*" if CopyService.exists) → ImageCanvas.setImage(img, text, OrientationStore.getImageData(crc))
  → preRenderImage: target = fit(img, canvas) × 1.05^zoom
                    → ScaleFactory.instance(imgSize).resize (ScalerHelper picks IResizer by pixels)
@@ -92,7 +93,7 @@ key → CommonContainerExt.next()/prev() → ImageAbstract
    - **Authority:** the jar carries the manifest it was built with (`/libs/<os>/<arch>/natives.sha256` + `natives.deps`, from the build's bundle). For the default location the jar's copy is authoritative: a source whose manifest differs is logged as an error and only files matching the jar's hashes are trusted (a tampered file is "checksum mismatch", not loaded). An explicit `-Dxview.libs.location`/`XVIEW_LIBS_LOCATION` is the owner's override: the source's own manifest is authoritative and a difference is logged once as a warning. File names in manifests must be plain names.
    - **macOS:** the `com.apple.quarantine` attribute is removed from the copy (`Files.copy` may clonefile and keep it).
 3. **Legacy mode** (no `natives.sha256` in the source): the flat directory `<AppData>/libs/<os>/<arch>/<file>`, copied when missing or when the content differs from the source (exact comparison: `Files.mismatch` for local files, a streamed compare otherwise; 21–28 ms for the 8 DLLs warm). Publishing: sibling temp file, verified, `ATOMIC_MOVE`; a DLL mapped by a running instance is renamed to `<file>.old-<nanos>` first; if publishing fails the loader loads the local source file directly, or, as a last resort, the stale cache file with a warning. Leftovers older than 10 minutes are swept once per JVM. The owner's deployed `C:\Program Files\xview\libs` (no manifest) keeps working this way.
-4. **Dependencies:** `natives.deps` lines (`libjxl_jni.so: libbrotlicommon.so.1 libbrotlidec.so.1 libhwy.so.1 libjxl_threads.so.0.11`) plus the built-in Windows entry `opencv_java460.dll → concrt140.dll?` (`?` = optional, loaded only when the bundle has it; the JDK does not ship `concrt140`). Dependencies are made available the same way and `System.load`-ed first by absolute path (recursively), so the dynamic linker resolves the dependent's import by module name / soname / install name against the loaded image. File names must therefore equal the soname (`libhwy.so.1`), not the full version.
+4. **Dependencies:** `natives.deps` lines (Windows arm64: `libavif.dll: aom.dll dav1d.dll`) plus the built-in Windows entry `opencv_java460.dll → concrt140.dll?` (`?` = optional, loaded only when the bundle has it; the JDK does not ship `concrt140`). Dependencies are made available the same way and `System.load`-ed first by absolute path (recursively), so the dynamic linker resolves the dependent's import by module name / soname / install name against the loaded image. File names must therefore equal the soname (`libhwy.so.1`), not the full version.
 5. **Load:** `load=true` → `System.load(file)` (JNI; Unix: the published file is made `rwxr-xr-x`). `load=false` → only makes the file available and sets `jna.library.path` / `jna.platform.library.path` to its folder (JNA: `libavif`). Per-JVM state per load name: MISSING / COPIED / LOADED / FAILED; a later `loadLibrary` promotes COPIED to LOADED. The method is `synchronized` (re-entrant).
 6. **Soft failure:** a missing source with no cache logs `doesn't exist: …` once (warning) and returns `false` without throwing; the failure surfaces later as `UnsatisfiedLinkError`. A present but incompatible native throws from `System.load` immediately. Callers that must degrade: `ImageLoader` (JPEG → ImageIO), `ScaleFactory` (OpenCV → Lanczos3), the stock-SWT `Library` (`tryLoadLibrary` → `UnsatisfiedLinkError`).
 7. **Diagnostics (B10):** `report()` gives one line per file of the jar's manifest (`not requested | COPIED | LOADED | MISSING | FAILED`) plus the source, mode and bundle id; `checkAll()` loads every manifest file in order (dependencies first; `jawt` is preloaded for `swt-awt`) and returns the failures. `java -jar xanderview.jar --check-natives` (`gui/NativeCheck`) prints both and exits 1 on a failure; it runs before `PlatformLaunch`.
@@ -107,9 +108,10 @@ key → CommonContainerExt.next()/prev() → ImageAbstract
 Load sites (Windows names):
 - JNI:
   - SWT `internal/Library.loadLibrary` (stock 3.135, patched, all flavors): `tryLoadLibrary` for `<name>-<platform>-<version>` (e.g. `swt-win32-4974r10`, `swt-pi3-gtk-4974r10`), `<name>-<platform>`, `<name>`; throws `UnsatisfiedLinkError` if none loads. Windows loads `swt-osversion-win32-4974r10` and `swt-win32-4974r10` at startup, `swt-awt-win32-4974r10` at `SWT_AWT.new_Frame` (plus the JDK's `jawt`), `swt-gdip-win32-4974r10` lazily
-  - `SevenZip.ensureLibraryIsInitialized`: `lib7-Zip-JBinding`, then `initLoadedLibraries()` (`libgcc_s_seh-1` is no longer requested, P7)
-  - `TJLoader`: `turbojpeg` (direct `LibraryLoader` call since P5.1)
-  - `WebP.loadNativeLibrary`: `webp-imageio`
+  - `SevenZip.ensureLibraryIsInitialized` (26.03-2.3): `lib7-Zip-JBinding`, then `initLoadedLibraries()`
+  - `NativeWebP` (static, vendored webp4j): `webp4j`
+- FFM (`java.lang.foreign`, no JNI exports needed):
+  - `codec/TurboJpeg.Lib` (static): `LibraryLoader.loadLibrary("turbojpeg")`, then `SymbolLookup.loaderLookup()` binds `tj3Init/Destroy/Set/Get/GetErrorStr/SetScalingFactor/DecompressHeader/Decompress8`; the two calls that take heap arrays are `Linker.Option.critical(true)` (zero-copy; a safepoint waits for the decode, ≈0.1 s per 24 MP). Any libturbojpeg ≥ 3.0 build works (official or the owner's optimized ones).
   - `JpegXLImageReader` (static): `libjxl_jni`
   - `ResizerNewOpenCV` (static): `opencv_java460`
 - JNA: `Avif` calls `checkLibrary("libavif", false)`, then `Native.load("avif")`. JNA on Windows also tries the `lib` prefix, which finds `libavif.dll`.

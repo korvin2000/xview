@@ -1,0 +1,2 @@
+libavif.dll: aom.dll dav1d.dll
+opencv_java460.dll: concrt140.dll?

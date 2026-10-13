@@ -11,7 +11,8 @@
 | [MainEntryPoint](../xanderView/src/main/java/org/delafer/xanderView/gui/MainEntryPoint.java) | 70 | A | `main`: `--check-natives` → `NativeCheck`, `PlatformLaunch`, DPI props, shutdown hook, preload stores, opens `MainWindow` |
 | [NativeCheck](../xanderView/src/main/java/org/delafer/xanderView/gui/NativeCheck.java) | 33 | A | `--check-natives`: `LibraryLoader.checkAll()` + `report()` headless, exit 1 on a failure (PLAN B10, P7.2) |
 | [MainWindow](../xanderView/src/main/java/org/delafer/xanderView/gui/MainWindow.java) | 480 | A | SWT Display/shell setup, menu, SWT_AWT embedding, **all key bindings** (`bindKeyEvent`, `SWT.*` constants and chars), event loop |
-| [ImageLoader](../xanderView/src/main/java/org/delafer/xanderView/gui/ImageLoader.java) | 153 | A | Base of MainWindow. Decodes an entry (TurboJPEG/ImageIO), builds the caption, hands the image to the canvas |
+| [ImageLoader](../xanderView/src/main/java/org/delafer/xanderView/gui/ImageLoader.java) | 140 | A | Base of MainWindow. Decodes an entry (JPEG → `TurboJpeg`, WebP → webp4j, else ImageIO), builds the caption, hands the image to the canvas |
+| [TurboJpeg](../xanderView/src/main/java/org/delafer/xanderView/codec/TurboJpeg.java) (`codec/`) | 115 | A | libturbojpeg 3 over the FFM API: header → DCT scaling denominator → `tj3Decompress8` straight into a `TYPE_3BYTE_BGR` image (critical downcalls, zero-copy); replaces the vendored JNI TurboJPEG Java (2026-10-13) |
 | [ImageCanvas](../xanderView/src/main/java/org/delafer/xanderView/gui/ImageCanvas.java) | 313 | A | AWT Canvas. Fit/zoom/pan/gamma/orientation state, `preRenderImage` pipeline, caption painting |
 | [PlatformLaunch](../xanderView/src/main/java/org/delafer/xanderView/gui/PlatformLaunch.java) | 115 | A | First step of `main`: relaunches once with `-XstartOnFirstThread` (macOS) or `GDK_BACKEND=x11` (Linux under Wayland) when missing; the Windows `--add-exports` restart went with SWT 4.527 (P7) |
 
@@ -110,7 +111,7 @@
 `xander.properties` (sample config, not loaded from the classpath), `resources/{large,small}_ico.png` (window icons), `audio/sound01.wav` (wrap beep), `simplelogger.properties` (slf4j-simple config, PLAN P1.8).
 
 ### Tests — `xanderView/src/test/java/org/delafer/xanderView/` (all scratch `main()`, no JUnit)
-`scale/test/TesterSingle` (TurboJPEG/mortennobel quality check), `tests/{Test,TestRead,EncryptorOld}`, `hash/Test` (+`infohash.txt`), `common/ArcFormats`. The benchmark tests of the deleted resizers, the OpenCL kernels and `imageViewer.cmd` were removed (PLAN P2).
+`tests/{Test,TestRead,EncryptorOld}`, `hash/Test` (+`infohash.txt`), `common/ArcFormats`. The benchmark tests of the deleted resizers, the OpenCL kernels and `imageViewer.cmd` were removed (PLAN P2).
 
 ## commons-j7 — `commons-j7/src/main/java/net/j7/commons/`
 Only the classes used by consumers are listed here; the full usage table is in [DEPENDENCIES.md §3](DEPENDENCIES.md).
@@ -136,10 +137,11 @@ Resource `commons-j7/src/main/resources/libs.properties` sets `location` = the n
 | Package | Entry points used by the app |
 |---|---|
 | `org/eclipse/swt`, all flavors (`src/swt-stock/java`) | stock SWT 3.135 classes unpacked at build time (natives, signatures and the stock `Library` excluded); [internal/Library](../thirddep-j7/src/swt-stock/java/org/eclipse/swt/internal/Library.java) (upstream 3.135 + `LibraryLoader` patch) |
-| `net/sf/sevenzipjbinding` | [SevenZip](../thirddep-j7/src/main/java/net/sf/sevenzipjbinding/SevenZip.java) (patched loader), `IInArchive`, `impl.RandomAccess*Stream` |
-| `org/libjpegturbo/turbojpeg` | [TJDecompressor](../thirddep-j7/src/main/java/org/libjpegturbo/turbojpeg/TJDecompressor.java), [TJLoader](../thirddep-j7/src/main/java/org/libjpegturbo/turbojpeg/TJLoader.java) (patched) |
+| `net/sf/sevenzipjbinding` (77, 26.03-2.3 from the owner's fork) | [SevenZip](../thirddep-j7/src/main/java/net/sf/sevenzipjbinding/SevenZip.java) (patched loader), `IInArchive`, `impl.RandomAccess*Stream` (`RandomAccessNioStream` is the owner's) |
+| ~~`org/libjpegturbo/turbojpeg`~~ | **deleted 2026-10-13**: JPEG decoding moved to the app's FFM binding `codec/TurboJpeg` |
 | `com/mortennobel/imagescaling` | `ResampleOp`, `ResampleFilters`, `MultiStepRescaleOp` |
-| `com/luciad/imageio/webp` | [WebP](../thirddep-j7/src/main/java/com/luciad/imageio/webp/WebP.java) (patched), SPI only |
+| `dev/matrixlab/webp4j` (8: decoder subset of webp4j 2.5.0) | [WebPCodec](../thirddep-j7/src/main/java/dev/matrixlab/webp4j/WebPCodec.java) (`decodeImage`, `isAvailable`), [NativeWebP](../thirddep-j7/src/main/java/dev/matrixlab/webp4j/internal/NativeWebP.java) (patched loader), `PixelConverter.wrapPixels`, model classes cached by the JNI library |
+| ~~`com/luciad/imageio/webp`~~ | **deleted 2026-10-13** (replaced by webp4j) |
 | `vavi/imageio/avif`, `vavi/awt/image/{avif,jna/avif}` | AVIF ImageIO SPI (reader and writer), JNA `avif` → `libavif.dll`; [Avif](../thirddep-j7/src/main/java/vavi/awt/image/avif/jna/Avif.java) (patched) |
 | `vavi/imageio/jpegxl/jni`, `org/jpeg/jpegxl/wrapper` | JXL ImageIO SPI (reader), JNI `libjxl_jni`; [JpegXLImageReader](../thirddep-j7/src/main/java/vavi/imageio/jpegxl/jni/JpegXLImageReader.java) (patched) |
 | External needs | `vavi.util.Debug` (vavi-commons). `vavi.imageio.WrappedImageInputStream` is vendored (PLAN P1.3): [WrappedImageInputStream](../thirddep-j7/src/main/java/vavi/imageio/WrappedImageInputStream.java) |

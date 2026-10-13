@@ -97,4 +97,62 @@ public interface IOutItem7z extends IOutItemBase {
      *            see {@link PropID#IS_ANTI}.
      */
     public void setPropertyIsAnti(Boolean isAnti);
+
+    /**
+     * Get property {@link PropID#COMMENT}.
+     * 
+     * @see PropID#COMMENT
+     * @return comment
+     */
+    public String getPropertyComment();
+
+    /**
+     * Set property {@link PropID#COMMENT}.
+     * <p>
+     * The 7z format writer currently ignores this property.
+     * 
+     * @see PropID#COMMENT
+     * @param comment
+     *            see {@link PropID#COMMENT}
+     */
+    public void setPropertyComment(String comment);
+
+    /**
+     * Get property {@link PropID#ENCRYPTED}.
+     * 
+     * @see PropID#ENCRYPTED
+     * @return encrypted flag
+     */
+    public Boolean getPropertyEncrypted();
+
+    /**
+     * Set property {@link PropID#ENCRYPTED}.
+     * <p>
+     * The 7z format writer currently ignores this property; to encrypt, provide a password
+     * through {@link ICryptoGetTextPassword}.
+     * 
+     * @see PropID#ENCRYPTED
+     * @param encrypted
+     *            see {@link PropID#ENCRYPTED}
+     */
+    public void setPropertyEncrypted(Boolean encrypted);
+
+    /**
+     * Get property {@link PropID#CRC}.
+     * 
+     * @see PropID#CRC
+     * @return CRC checksum
+     */
+    public Integer getPropertyCRC();
+
+    /**
+     * Set property {@link PropID#CRC}.
+     * <p>
+     * The 7z format writer currently ignores this property.
+     * 
+     * @see PropID#CRC
+     * @param crc
+     *            see {@link PropID#CRC}
+     */
+    public void setPropertyCRC(Integer crc);
 }

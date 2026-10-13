@@ -48,6 +48,9 @@ public final class OutItem implements IOutItemAllFormats {
     private Boolean propertyIsAnti;
     private String propertySymLink;
     private String propertyHardLink;
+    private String propertyComment;
+    private Boolean propertyEncrypted;
+    private Integer propertyCRC;
 
     private Boolean updateIsNewData;
     private Boolean updateIsNewProperties;
@@ -260,6 +263,48 @@ public final class OutItem implements IOutItemAllFormats {
      */
     public void setPropertyIsAnti(Boolean isAnti) {
         this.propertyIsAnti = isAnti;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public String getPropertyComment() {
+        return propertyComment;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void setPropertyComment(String comment) {
+        this.propertyComment = comment;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Boolean getPropertyEncrypted() {
+        return propertyEncrypted;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void setPropertyEncrypted(Boolean encrypted) {
+        this.propertyEncrypted = encrypted;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public Integer getPropertyCRC() {
+        return propertyCRC;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public void setPropertyCRC(Integer crc) {
+        this.propertyCRC = crc;
     }
 
     /**

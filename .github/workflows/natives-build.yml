@@ -1,12 +1,16 @@
-# Builds the natives that have no prebuilt upstream source (docs/NATIVES.md §2, PLAN P7.7): today the libjxl JNI wrapper
-# `libjxl_jni.dylib` for macOS x86_64 and arm64 (Homebrew/MacPorts build libjxl with JNI off; upstream ships jxl_jni only
-# for Windows). Same recipe as upstream's static Windows release: libjxl v0.12.0, BUILD_SHARED_LIBS=OFF, target jxl_jni,
-# so the dylib depends only on libSystem/libc++. Decoding runs on the same code path as Windows (~1 s for 42 MP).
+# Builds the natives that have no usable prebuilt upstream source (docs/NATIVES.md §2, PLAN P7.7): the libjxl JNI
+# wrapper `jxl_jni` (2 JNI exports) for macOS x86_64/arm64, Linux x86_64/aarch64 and Windows arm64. Homebrew/MacPorts
+# build libjxl with JNI off, Debian's libjxl_jni.so needs 4 sibling libraries, and upstream ships a static jxl_jni only
+# for Windows x86/x64. Same recipe as upstream's static Windows release: libjxl v0.12.0, BUILD_SHARED_LIBS=OFF, target
+# jxl_jni, brotli + highway + skcms linked in, generic ISA (highway dispatches SIMD at run time). Every file may depend
+# on OS libraries only: libSystem/libc++ (macOS), libc/libm/libpthread/libdl/ld-linux with libstdc++/libgcc linked
+# statically (Linux, glibc floor of ubuntu-22.04), KERNEL32 + UCRT (Windows, static C++ runtime). The jobs fail on a
+# violation, a missing JNI export or a library that System.load cannot load.
 #
-# Manual steps after a run: download the artifact, add the two files to the natives-<rev> release as
-# `libjxl_jni-macos-x86_64.dylib` / `libjxl_jni-macos-aarch64.dylib`, add a `libjxl_jni.dylib` row (member `-`, the
-# printed SHA-256 and size) to natives/macos-x86_64.tsv and natives/macos-aarch64.tsv, rebundle (tools/natives/bundle.sh),
-# upload the new macOS bundles and update xview.natives.sha256 in the parent pom.
+# The `release` job publishes what was built as assets of the GitHub release `natives-jxl-<version>` (created, or
+# updated with --clobber), plus SHA256SUMS over all its assets. Manual steps after a run: add a `libjxl_jni.*` row
+# (release asset URL, member `-`, SHA-256, size) to the natives/<platform>.tsv files, rebundle (tools/natives/bundle.sh),
+# upload the new bundles and update xview.natives.sha256 in the parent pom.
 name: natives-build
 on:
   workflow_dispatch:
@@ -19,6 +23,28 @@ on:
         description: minimum macOS version (x86_64 builds use 10.13 if lower)
         required: true
         default: '11.0'
+      release:
+        description: publish the files as release natives-jxl-<version>
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  # Only the submodules jxl_jni needs (testdata, googletest, lcms, libpng, ... are not cloned).
+  LIBJXL_SUBMODULES: third_party/brotli third_party/highway third_party/skcms
+  JXL_CMAKE_FLAGS: >-
+    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF
+    -DJPEGXL_ENABLE_JNI=ON
+    -DJPEGXL_FORCE_SYSTEM_BROTLI=OFF -DJPEGXL_FORCE_SYSTEM_HWY=OFF
+    -DJPEGXL_ENABLE_SKCMS=ON
+    -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF
+    -DJPEGXL_ENABLE_DOXYGEN=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_SJPEG=OFF -DJPEGXL_ENABLE_OPENEXR=OFF
+    -DJPEGXL_ENABLE_PLUGINS=OFF -DJPEGXL_ENABLE_VIEWERS=OFF -DJPEGXL_ENABLE_TCMALLOC=OFF -DJPEGXL_BUNDLE_LIBPNG=OFF
+  JNI_SYMBOLS: Java_org_jpeg_jpegxl_wrapper_DecoderJni_nativeGetBasicInfo Java_org_jpeg_jpegxl_wrapper_DecoderJni_nativeGetPixels
 
 jobs:
   jxl-jni-macos:
@@ -31,48 +57,278 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
       - name: Tools
-        run: brew install cmake ninja llvm || true
+        run: command -v ninja || brew install ninja
       - name: Clone libjxl ${{ inputs.libjxl_ref }}
-        run: git clone --depth 1 --recursive --branch "${{ inputs.libjxl_ref }}" https://github.com/libjxl/libjxl.git libjxl
+        run: |
+          git clone --depth 1 --branch "${{ inputs.libjxl_ref }}" https://github.com/libjxl/libjxl.git libjxl
+          git -C libjxl submodule update --init --depth 1 $LIBJXL_SUBMODULES
       - name: Configure and build jxl_jni
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME }}
         run: |
           MIN="${{ inputs.macos_min }}"; [ "${{ matrix.arch }}" = x86_64 ] && MIN="10.13"
-          cmake -S libjxl -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
+          cmake -S libjxl -B build -G Ninja $JXL_CMAKE_FLAGS \
             -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET="$MIN" \
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-            -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF \
-            -DJPEGXL_ENABLE_JNI=ON \
-            -DJPEGXL_FORCE_SYSTEM_BROTLI=OFF -DJPEGXL_FORCE_SYSTEM_HWY=OFF \
-            -DJPEGXL_ENABLE_SKCMS=ON \
-            -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
-            -DJPEGXL_ENABLE_DOXYGEN=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_SJPEG=OFF -DJPEGXL_ENABLE_OPENEXR=OFF
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$MIN"
           cmake --build build --target jxl_jni --parallel
       - name: Collect, sign and inspect
         run: |
-          mkdir -p out/libs/macos/${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}
-          f="$(find build -name 'libjxl_jni.dylib' | head -1)"; test -n "$f"
-          cp "$f" out/libjxl_jni-${{ matrix.platform }}.dylib
-          strip -x out/libjxl_jni-${{ matrix.platform }}.dylib
-          codesign --force --sign - out/libjxl_jni-${{ matrix.platform }}.dylib
-          codesign --verify --verbose out/libjxl_jni-${{ matrix.platform }}.dylib
-          echo "== dependencies"; otool -L out/libjxl_jni-${{ matrix.platform }}.dylib
-          echo "== minos";        otool -l out/libjxl_jni-${{ matrix.platform }}.dylib | grep -A3 LC_BUILD_VERSION | grep -E 'minos|sdk'
-          echo "== JNI exports"; nm -gU out/libjxl_jni-${{ matrix.platform }}.dylib | grep Java_ || true
-          echo "== sha256 / size"; shasum -a 256 out/libjxl_jni-${{ matrix.platform }}.dylib; stat -f %z out/libjxl_jni-${{ matrix.platform }}.dylib
+          set -eu
+          f=out/libjxl_jni-${{ matrix.platform }}.dylib; mkdir -p out
+          src="$(find build -name 'libjxl_jni.dylib' | head -1)"; test -n "$src"
+          cp "$src" "$f"
+          strip -x "$f"
+          codesign --force --sign - "$f"
+          codesign --verify --verbose "$f"
+          # otool -L also lists the dylib's own install name (LC_ID_DYLIB, @rpath/libjxl_jni.dylib): not a dependency
+          id="$(otool -D "$f" | tail -n +2)"
+          deps="$(otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -vxF "$id" || true)"; syms="$(nm -gU "$f")"
+          echo "== toolchain: $(c++ --version | head -1), SDK $(xcrun --show-sdk-version)"
+          echo "== file"; file "$f"
+          echo "== dependencies"; echo "$deps"
+          echo "== minos"; otool -l "$f" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN_MACOSX' | grep -E 'minos|version|sdk' || true
+          echo "== JNI exports"; grep Java_ <<<"$syms" || true
+          echo "== sha256 / size"; shasum -a 256 "$f"; stat -f %z "$f"
+          for s in $JNI_SYMBOLS; do grep -q " _$s\$" <<<"$syms" || { echo "::error::missing export $s"; exit 1; }; done
           # self-containment: only system libraries may be referenced
-          ! otool -L out/libjxl_jni-${{ matrix.platform }}.dylib | tail -n +2 | awk '{print $1}' | grep -vE '^(/usr/lib/|/System/Library/)'
+          bad="$(grep -vE '^(/usr/lib/|/System/Library/)' <<<"$deps" || true)"
+          [ -z "$bad" ] || { echo "::error::non-system dependencies: $bad"; exit 1; }
+      - name: Load test
+        run: |
+          printf '%s\n' 'public class LoadTest { public static void main(String[] a) {' \
+            '  System.load(new java.io.File(a[0]).getAbsolutePath()); System.out.println("loaded " + a[0]); } }' > LoadTest.java
+          "$JAVA_HOME/bin/java" LoadTest.java out/libjxl_jni-${{ matrix.platform }}.dylib
       - uses: actions/upload-artifact@v4
         with:
-          name: libjxl_jni-${{ matrix.platform }}
+          name: jxl_jni-${{ matrix.platform }}
           path: out/libjxl_jni-${{ matrix.platform }}.dylib
           if-no-files-found: error
+
+  jxl-jni-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, platform: linux-x86_64 }
+          - { os: ubuntu-22.04-arm, platform: linux-aarch64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Tools
+        run: |
+          if ! command -v ninja || ! command -v cmake; then
+            sudo apt-get update -q && sudo apt-get install -y -q ninja-build cmake
+          fi
+          cmake --version | head -1; c++ --version | head -1; ldd --version | head -1
+      - name: Clone libjxl ${{ inputs.libjxl_ref }}
+        run: |
+          git clone --depth 1 --branch "${{ inputs.libjxl_ref }}" https://github.com/libjxl/libjxl.git libjxl
+          git -C libjxl submodule update --init --depth 1 $LIBJXL_SUBMODULES
+      - name: Configure and build jxl_jni
+        run: |
+          # libstdc++/libgcc linked in and their symbols (and those of libjxl/brotli/highway) kept local
+          cmake -S libjxl -B build -G Ninja $JXL_CMAKE_FLAGS \
+            -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++ -static-libgcc -Wl,--exclude-libs,ALL -Wl,--as-needed"
+          cmake --build build --target jxl_jni --parallel
+      - name: Collect and inspect
+        run: |
+          set -eu
+          f=out/libjxl_jni-${{ matrix.platform }}.so; mkdir -p out
+          src="$(find build -name 'libjxl_jni.so' | head -1)"; test -n "$src"
+          cp "$src" "$f"
+          strip --strip-unneeded "$f"
+          needed="$(readelf -d "$f" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p')"
+          dynsym="$(objdump -T "$f")"; syms="$(nm -D --defined-only "$f")"
+          echo "== toolchain: $(c++ --version | head -1)"
+          echo "== file"; file "$f"
+          echo "== dependencies (NEEDED)"; echo "$needed"
+          echo "== symbol versions: $(grep -oE '\b(GLIBC|GLIBCXX|CXXABI|GCC)_[0-9.]+' <<<"$dynsym" | sort -uV | xargs)"
+          echo "== GLIBC floor: $(grep -oE '\bGLIBC_[0-9.]+' <<<"$dynsym" | sort -uV | tail -1)"
+          echo "== JNI exports"; grep ' Java_' <<<"$syms" || true
+          echo "== exported symbols: $(wc -l <<<"$syms")"
+          echo "== sha256 / size"; sha256sum "$f"; stat -c %s "$f"
+          for s in $JNI_SYMBOLS; do grep -q " $s\$" <<<"$syms" || { echo "::error::missing export $s"; exit 1; }; done
+          bad="$(grep -vE '^(libc\.so\.6|libm\.so\.6|libpthread\.so\.0|libdl\.so\.2|ld-linux-(x86-64|aarch64)\.so\.[12])$' <<<"$needed" || true)"
+          [ -z "$bad" ] || { echo "::error::non-system dependencies: $bad"; exit 1; }
+          if grep -qE '\b(GLIBCXX|CXXABI|GCC)_[0-9]' <<<"$dynsym"; then echo "::error::dynamic libstdc++/libgcc references"; exit 1; fi
+      - name: Load test
+        run: |
+          printf '%s\n' 'public class LoadTest { public static void main(String[] a) {' \
+            '  System.load(new java.io.File(a[0]).getAbsolutePath()); System.out.println("loaded " + a[0]); } }' > LoadTest.java
+          "$JAVA_HOME/bin/java" LoadTest.java out/libjxl_jni-${{ matrix.platform }}.so
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jxl_jni-${{ matrix.platform }}
+          path: out/libjxl_jni-${{ matrix.platform }}.so
+          if-no-files-found: error
+
+  # clang-cl (VS ClangCL toolset = upstream's Windows toolset, static CRT /MT) first; if it fails, llvm-mingw with -static;
+  # MSVC cl last: highway compiles only its EMU128 (scalar) target with cl on Arm64 (no __ARM_NEON; the probe step
+  # prints it), while both clang builds get the NEON target. llvm-mingw is always installed: its llvm-readobj and
+  # llvm-objdump inspect whichever DLL was built.
+  jxl-jni-windows-arm64:
+    runs-on: windows-11-arm
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      LLVM_MINGW_VERSION: '20250709'
+      OUT: out/jxl_jni-windows-aarch64.dll
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+      - name: Install llvm-mingw ${{ env.LLVM_MINGW_VERSION }} (aarch64 host)
+        shell: pwsh
+        run: |
+          $zip = "llvm-mingw-${env:LLVM_MINGW_VERSION}-ucrt-aarch64.zip"
+          Invoke-WebRequest -Uri "https://github.com/mstorsjo/llvm-mingw/releases/download/${env:LLVM_MINGW_VERSION}/$zip" -OutFile llvm-mingw.zip
+          New-Item -ItemType Directory -Force C:\llvm-mingw-root | Out-Null
+          & "$env:SystemRoot\System32\tar.exe" -xf llvm-mingw.zip -C C:\llvm-mingw-root
+          $dir = (Get-ChildItem C:\llvm-mingw-root -Filter "llvm-mingw-*" -Directory | Select-Object -First 1).FullName
+          "LLVM_MINGW_BIN=$dir\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: seanmiddleditch/gha-setup-ninja@v6
+      - name: Write the DLL check
+        run: |
+          cat > "$RUNNER_TEMP/check-pe.sh" <<'EOF'
+          # check-pe.sh <dll>: ARM64, imports only KERNEL32/UCRT, both JNI exports present
+          set -eu
+          f="$1"; B="$(cygpath -u "$LLVM_MINGW_BIN")"
+          hdr="$("$B/llvm-readobj" --file-headers "$f")"
+          grep -q IMAGE_FILE_MACHINE_ARM64 <<<"$hdr" || { echo "::error::$f is not ARM64"; exit 1; }
+          imports="$("$B/llvm-readobj" --coff-imports "$f" | sed -n 's/^ *Name: *//p' | sort -u)"
+          exports="$("$B/llvm-readobj" --coff-exports "$f" | sed -n 's/^ *Name: *//p')"
+          echo "== imports: $(echo $imports)"
+          echo "== exports: $(echo $exports)"
+          for s in $JNI_SYMBOLS; do grep -qx "$s" <<<"$exports" || { echo "::error::missing export $s"; exit 1; }; done
+          bad="$(grep -viE '^(kernel32\.dll|ucrtbase\.dll|api-ms-win-crt-[a-z0-9-]+\.dll)$' <<<"$imports" || true)"
+          [ -z "$bad" ] || { echo "::error::non-system imports: $bad"; exit 1; }
+          EOF
+      - name: Clone libjxl ${{ inputs.libjxl_ref }}
+        run: |
+          git clone --depth 1 --branch "${{ inputs.libjxl_ref }}" https://github.com/libjxl/libjxl.git libjxl
+          git -C libjxl submodule update --init --depth 1 $LIBJXL_SUBMODULES
+      # Highway has no run-time dispatch on Windows/Arm: the static target is what each compiler gets.
+      - name: Probe highway targets per compiler
+        continue-on-error: true
+        run: |
+          mkdir -p probe
+          {
+            echo '#include "hwy/detect_targets.h"'
+            for t in SVE2 SVE NEON_BF16 NEON NEON_WITHOUT_AES EMU128 SCALAR; do
+              printf '#if HWY_TARGETS & HWY_%s\n#pragma message("hwy-probe: compiled %s")\n#endif\n' $t $t
+              printf '#if HWY_STATIC_TARGET == HWY_%s\n#pragma message("hwy-probe: static %s")\n#endif\n' $t $t
+            done
+            printf '#ifdef __ARM_NEON\n#pragma message("hwy-probe: __ARM_NEON defined")\n#endif\nint hwy_probe;\n'
+          } > probe/probe.cc
+          printf 'cmake_minimum_required(VERSION 3.16)\nproject(p CXX)\nadd_library(p OBJECT probe.cc)\ntarget_include_directories(p PRIVATE "%s")\n' \
+            "$(cygpath -m "$PWD/libjxl/third_party/highway")" > probe/CMakeLists.txt
+          for ts in "" "-T ClangCL"; do
+            echo "== probe: VS ${ts:-cl}"
+            cmake -S probe -B "probe/b${ts:+-clangcl}" -A ARM64 $ts >/dev/null && cmake --build "probe/b${ts:+-clangcl}" --config Release 2>&1 | grep -o 'hwy-probe: [A-Za-z0-9_ ]*' | sort -u || true
+          done
+          echo "== probe: llvm-mingw"
+          "$(cygpath -u "$LLVM_MINGW_BIN")/aarch64-w64-mingw32-clang++" -std=c++17 -Ilibjxl/third_party/highway -c probe/probe.cc -o probe/p.o 2>&1 \
+            | grep -o 'hwy-probe: [A-Za-z0-9_ ]*' | sort -u || true
+      - name: Build with clang-cl (VS ClangCL toolset, ARM64, /MT)
+        id: clangcl
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          cmake -S libjxl -B build-clangcl -A ARM64 -T ClangCL $JXL_CMAKE_FLAGS -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build build-clangcl --config Release --target jxl_jni --parallel
+          src="$(find build-clangcl -name 'jxl_jni.dll' | head -1)"; test -n "$src"
+          bash "$RUNNER_TEMP/check-pe.sh" "$src"
+          v="$(sed -n 's/^set(CMAKE_CXX_COMPILER_VERSION "\(.*\)")/\1/p' build-clangcl/CMakeFiles/*/CMakeCXXCompiler.cmake | head -1)"
+          gen="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' build-clangcl/CMakeCache.txt)"
+          mkdir -p out; cp "$src" "$OUT"; echo "clang-cl ${v:-?} ($gen, -A ARM64 -T ClangCL, /MT)" > out/toolchain.txt
+      - name: Build with llvm-mingw (aarch64-w64-mingw32-clang, -static)
+        id: mingw
+        if: steps.clangcl.outcome != 'success'
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          export PATH="$(cygpath -u "$LLVM_MINGW_BIN"):$PATH"
+          cmake -S libjxl -B build-mingw -G Ninja $JXL_CMAKE_FLAGS \
+            -DCMAKE_C_COMPILER=aarch64-w64-mingw32-clang -DCMAKE_CXX_COMPILER=aarch64-w64-mingw32-clang++ \
+            -DCMAKE_RC_COMPILER=aarch64-w64-mingw32-windres \
+            -DCMAKE_SHARED_LINKER_FLAGS="-static"
+          cmake --build build-mingw --target jxl_jni --parallel
+          src="$(find build-mingw -iname '*jxl_jni.dll' | head -1)"; test -n "$src"
+          mkdir -p out; cp "$src" "$OUT"
+          llvm-strip --strip-all "$OUT"
+          bash "$RUNNER_TEMP/check-pe.sh" "$OUT"
+          echo "llvm-mingw $LLVM_MINGW_VERSION ($(aarch64-w64-mingw32-clang --version | head -1)), -static" > out/toolchain.txt
+      - name: Build with MSVC (cl, ARM64, /MT; highway EMU128 only)
+        id: msvc
+        if: steps.clangcl.outcome != 'success' && steps.mingw.outcome != 'success'
+        run: |
+          set -euxo pipefail
+          cmake -S libjxl -B build-msvc -A ARM64 $JXL_CMAKE_FLAGS -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build build-msvc --config Release --target jxl_jni --parallel
+          src="$(find build-msvc -name 'jxl_jni.dll' | head -1)"; test -n "$src"
+          bash "$RUNNER_TEMP/check-pe.sh" "$src"
+          v="$(sed -n 's/^set(CMAKE_CXX_COMPILER_VERSION "\(.*\)")/\1/p' build-msvc/CMakeFiles/*/CMakeCXXCompiler.cmake | head -1)"
+          mkdir -p out; cp "$src" "$OUT"; echo "MSVC cl ${v:-?} (-A ARM64, /MT; highway EMU128 only)" > out/toolchain.txt
+      - name: Inspect
+        run: |
+          set -eu
+          B="$(cygpath -u "$LLVM_MINGW_BIN")"
+          echo "== toolchain"; cat out/toolchain.txt
+          bash "$RUNNER_TEMP/check-pe.sh" "$OUT"
+          echo "== llvm-objdump -p"; "$B/llvm-objdump" -p "$OUT" | grep -E 'DLL Name|Java_|^Magic|Subsystem' || true
+          echo "== sha256 / size"; sha256sum "$OUT"; stat -c %s "$OUT"
+      - name: Load test
+        run: |
+          printf '%s\n' 'public class LoadTest { public static void main(String[] a) {' \
+            '  System.load(new java.io.File(a[0]).getAbsolutePath()); System.out.println("loaded " + a[0]); } }' > LoadTest.java
+          "$JAVA_HOME/bin/java" LoadTest.java "$OUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jxl_jni-windows-aarch64
+          path: out/jxl_jni-windows-aarch64.dll
+          if-no-files-found: error
+
+  release:
+    needs: [jxl-jni-macos, jxl-jni-linux, jxl-jni-windows-arm64]
+    if: ${{ !cancelled() && inputs.release }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jxl_jni-*
+          path: dist
+          merge-multiple: true
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.libjxl_ref }}
+        run: |
+          set -euo pipefail
+          VER="${REF#v}"; TAG="natives-jxl-$VER"; R="$GITHUB_REPOSITORY"; TITLE="libjxl $VER jxl_jni builds"
+          NOTES="jxl_jni (libjxl $REF, static brotli + highway + skcms, OS libraries only) built by $GITHUB_SERVER_URL/$R/actions/runs/$GITHUB_RUN_ID (.github/workflows/natives-build.yml). Checksums: SHA256SUMS."
+          mkdir -p dist; ls -l dist
+          [ -n "$(ls dist)" ] || { echo "::error::nothing was built"; exit 1; }
+          if gh release view "$TAG" -R "$R" >/dev/null 2>&1; then
+            # keep assets that this run did not rebuild in SHA256SUMS
+            for a in $(gh release view "$TAG" -R "$R" --json assets -q '.assets[].name'); do
+              [ "$a" = SHA256SUMS ] || [ -e "dist/$a" ] || gh release download "$TAG" -R "$R" -p "$a" -D dist
+            done
+          else
+            gh release create "$TAG" -R "$R" --target "$GITHUB_SHA" --title "$TITLE" --notes "$NOTES"
+          fi
+          (cd dist && sha256sum $(ls | grep -vx SHA256SUMS | sort) > SHA256SUMS && cat SHA256SUMS)
+          gh release upload "$TAG" -R "$R" --clobber dist/*
+          gh release edit "$TAG" -R "$R" --draft=false --prerelease=false --title "$TITLE" --notes "$NOTES"
+          gh release view "$TAG" -R "$R" --json url,assets -q '.url, (.assets[] | "\(.name) \(.size) \(.url)")'

@@ -1,0 +1,15 @@
+# Third-party native libraries: macos-x86_64
+
+Bundle rev 2026.10.1, built by tools/natives/bundle.sh from natives/macos-x86_64.tsv. Each file is an unmodified upstream build (renamed to its load-time name where noted); 'owner build' rows are the maintainer's own builds kept in the tracked tree.
+
+| file | version | license | upstream |
+|---|---|---|---|
+| `libswt-cocoa-4974r10.jnilib` | 3.135.0 (4974r10) | EPL-2.0 | https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.swt.cocoa.macosx.x86_64/3.135.0/org.eclipse.swt.cocoa.macosx.x86_64-3.135.0.jar (`libswt-cocoa-4974r10.jnilib`) |
+| `libswt-pi-cocoa-4974r10.jnilib` | 3.135.0 (4974r10) | EPL-2.0 | https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.swt.cocoa.macosx.x86_64/3.135.0/org.eclipse.swt.cocoa.macosx.x86_64-3.135.0.jar (`libswt-pi-cocoa-4974r10.jnilib`) |
+| `libswt-awt-cocoa-4974r10.jnilib` | 3.135.0 (4974r10) | EPL-2.0 | https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.swt.cocoa.macosx.x86_64/3.135.0/org.eclipse.swt.cocoa.macosx.x86_64-3.135.0.jar (`libswt-awt-cocoa-4974r10.jnilib`) |
+| `lib7-Zip-JBinding.dylib` | 26.03-2.3 (owner's fork korvin2000/sevenzipjbinding, CI release ci4: Mac-x86_64, thin) | LGPL-2.1-or-later+unRAR-restriction | https://github.com/korvin2000/sevenzipjbinding/releases/download/Release-26.03-2.3-ci4/sevenzipjbinding-26.03-2.3-Mac-x86_64.zip (`sevenzipjbinding-26.03-2.3-Mac-x86_64/lib/sevenzipjbinding-Mac-x86_64.jar!Mac-x86_64/lib7-Zip-JBinding.dylib`) |
+| `libturbojpeg.dylib` | 3.2.0 official (universal x86_64+arm64) | BSD-3-Clause+IJG+Zlib | https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.dmg (`libjpeg-turbo-3.2.0/libjpeg-turbo.pkg!libjpeg-turbo.pkg/Payload!Payload~!./opt/libjpeg-turbo/lib/libturbojpeg.0.5.0.dylib`) |
+| `libwebp4j.dylib` | webp4j 2.5.0 JNI library on libwebp 1.6.0 (owner's fork korvin2000/libwebp, release Release-1.6.0-2.5.0-ci1: Apple clang 17, -O3 -ffast-math -flto, macOS 10.15+) | MIT(webp4j)+BSD-3-Clause(libwebp) | https://github.com/korvin2000/libwebp/releases/download/Release-1.6.0-2.5.0-ci1/libwebp4j-mac-x64.dylib (`-`) |
+| `libavif.dylib` | 1.4.2 (pillow-avif-plugin 1.6.0, static codecs, minos 10.13) | BSD-2-Clause+BSD-2-Clause(dav1d)+BSD-2-Clause+AOM-Patent(aom) | https://files.pythonhosted.org/packages/5b/90/bf7f3ab2928fd1bf6f26758baa9cced49f080139804c154dd390eb309d1c/pillow_avif_plugin-1.6.0-cp312-cp312-macosx_10_13_x86_64.whl (`pillow_avif/.dylibs/libavif.16.4.2.dylib`) |
+| `libjxl_jni.dylib` | libjxl 0.12.0 jxl_jni (own CI build .github/workflows/natives-build.yml, release natives-jxl-0.12.0: static brotli+highway+skcms, OS libraries only, macOS 10.13+) | BSD-3-Clause(libjxl)+MIT(brotli)+Apache-2.0(highway)+BSD-3-Clause(skcms) | https://github.com/korvin2000/xview/releases/download/natives-jxl-0.12.0/libjxl_jni-macos-x86_64.dylib (`-`) |
+| `libopencv_java460.dylib` | 4.6.0-5 (WPILib) | Apache-2.0 | https://frcmaven.wpi.edu/artifactory/release/edu/wpi/first/thirdparty/frc2023/opencv/opencv-jni/4.6.0-5/opencv-jni-4.6.0-5-osxx86-64.jar (`osx/x86-64/libopencv_java460.dylib`) |

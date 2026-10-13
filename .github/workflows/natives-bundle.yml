@@ -1,15 +1,16 @@
-# Builds the native bundles (docs/NATIVES.md §3) from natives/<platform>.tsv: downloads the upstream assets, verifies
-# every hash, extracts the members, runs the binary checks and uploads the zips as workflow artifacts. Publishing is a
-# manual step: attach all xview-natives-*-<rev>.zip (+ .sha256) to a new GitHub release `natives-<rev>` and set
+# Rebuilds the native trees natives/<os>/<arch>/ (docs/NATIVES.md §3) from natives/<platform>.tsv: downloads the upstream
+# assets, verifies every hash, extracts the members, runs the binary checks and uploads the bundle zips as workflow
+# artifacts. Owner-built rows (url '-') are taken from the checked-out tree. Publishing is a manual step: commit the
+# rebuilt trees, attach all xview-natives-*-<rev>.zip (+ .sha256) to a new GitHub release `natives-<rev>` and set
 # xview.natives.rev / xview.natives.sha256 in the parent pom.
 name: natives-bundle
 on:
   workflow_dispatch:
     inputs:
       rev:
-        description: bundle revision (e.g. 2026.10)
+        description: bundle revision (e.g. 2026.10.1)
         required: true
-        default: '2026.10'
+        default: '2026.10.1'
 
 jobs:
   bundle:
@@ -20,14 +21,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends p7zip-full llvm
       - name: Bundle all platforms
         run: |
-          for p in windows-x86_64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
+          for p in windows-x86_64 windows-aarch64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
             tools/natives/bundle.sh "$p" --rev "${{ inputs.rev }}"
           done
       - name: Check binaries
         run: |
-          for p in windows-x86_64 linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64; do
-            tools/natives/check-binaries.sh "natives/target/$p"
+          for d in windows/amd64 windows/aarch64 linux/x86_64 linux/aarch64 macos/x86_64 macos/aarch64; do
+            tools/natives/check-binaries.sh "natives/$d"
           done
+          git status --short natives/ | head -50   # rebuilt trees that differ from the checkout (expected to be empty)
       - uses: actions/upload-artifact@v4
         with:
           name: xview-natives-${{ inputs.rev }}

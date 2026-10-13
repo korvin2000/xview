@@ -1,7 +1,7 @@
-# Cross-builds the per-platform distribution zips on one Linux runner (Java is portable, the natives are prebuilt
-# bundles, docs/NATIVES.md §3) and probes each zip on a runner of its platform (`--check-natives`, PLAN B10).
-# Prerequisite: the GitHub release natives-<rev> with the bundle zips referenced by the parent pom exists
-# (xview.natives.rev / xview.natives.sha256). Until then the build job fails at the download step by design.
+# Cross-builds the six per-platform distribution zips on one Linux runner (Java is portable; the natives are the tracked
+# trees natives/<os>/<arch>/, docs/NATIVES.md §3, so no download happens here) and probes each zip on a runner of its
+# platform (`--check-natives`, PLAN B10). Without the trees the build would download the bundle zips of the GitHub
+# release natives-<rev> referenced by the parent pom (xview.natives.rev / xview.natives.sha256).
 name: build
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flavor: [win32.win32.x86_64, gtk.linux.x86_64, gtk.linux.aarch64, cocoa.macosx.x86_64, cocoa.macosx.aarch64]
+        flavor: [win32.win32.x86_64, win32.win32.aarch64, gtk.linux.x86_64, gtk.linux.aarch64, cocoa.macosx.x86_64, cocoa.macosx.aarch64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -43,6 +43,7 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, flavor: win32.win32.x86_64 }
+          - { os: windows-11-arm, flavor: win32.win32.aarch64 }
           - { os: ubuntu-24.04, flavor: gtk.linux.x86_64 }
           - { os: ubuntu-24.04-arm, flavor: gtk.linux.aarch64 }
           - { os: macos-15-intel, flavor: cocoa.macosx.x86_64 }

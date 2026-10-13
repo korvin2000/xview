@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Builds the native bundle of one platform from natives/<platform>.tsv (docs/NATIVES.md §3).
+# Rebuilds the tracked native tree of one platform from natives/<platform>.tsv and zips it (docs/NATIVES.md §3).
 #
 #   tools/natives/bundle.sh <platform> [--rev <rev>] [--out <dir>] [--cache <dir>] [--no-zip]
 #
-# platform: windows-x86_64 | linux-x86_64 | linux-aarch64 | macos-x86_64 | macos-aarch64 | windows-aarch64
+# platform: windows-x86_64 | windows-aarch64 | linux-x86_64 | linux-aarch64 | macos-x86_64 | macos-aarch64
 # For every TSV row the upstream asset is downloaded into the cache (content-addressed by its SHA-256, so a second run
 # is offline), verified, the member is extracted through the layers separated by '!' (zip/jar/7z/exe/deb/dmg/pkg/
-# cpio/whl, all via 7-Zip), renamed to the load-time file name and verified against the row's SHA-256. The output is
-#   <out>/<platform>/libs/<os>/<arch>/<files> + natives.sha256 + natives.deps, <out>/<platform>/THIRD-PARTY-NOTICES.md
-#   <out>/xview-natives-<platform>-<rev>.zip (+ .sha256)
+# cpio/whl, all via 7-Zip), renamed to the load-time file name and verified against the row's SHA-256. A row whose url
+# is '-' is an owner-built file: it is taken from the tracked tree itself (natives/<os>/<arch>/<file>) and verified.
+# Output: the tracked tree natives/<os>/<arch>/ (files + natives.sha256 + natives.deps + THIRD-PARTY-NOTICES.md), replaced
+# as a whole, and <out>/xview-natives-<platform>-<rev>.zip (+ .sha256) holding the same tree as libs/<os>/<arch>/.
 # Tools: bash, curl, sha256sum, 7z (7z | 7zz | "C:\Program Files\7-Zip\7z.exe"). Timestamps inside the zip are fixed
 # to SOURCE_DATE_EPOCH (default 2026-01-01) for reproducible archives.
 set -euo pipefail
@@ -46,15 +47,15 @@ else echo "7-Zip (7z) is required" >&2; exit 2; fi
 sha() { sha256sum "$1" | cut -c1-64; }
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1767225600}"
 
-DEST="$OUT/$PLATFORM"; LIBS="$DEST/libs/$LIBDIR"
-rm -rf "$DEST"; mkdir -p "$LIBS" "$CACHE"
+TREE="$ROOT/natives/$LIBDIR"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+LIBS="$WORK/libs/$LIBDIR"; mkdir -p "$LIBS" "$CACHE" "$OUT"
 
 # fetch <url> <sha256> -> prints the cached asset path
 fetch() {
   local url="$1" want="$2" dst="$CACHE/$2"
   if [ ! -f "$dst" ]; then
-    echo "  downloading $url"
+    echo "  downloading $url" >&2
     curl -fsSL --retry 3 -o "$dst.part" "$url"
     local got; got="$(sha "$dst.part")"
     [ "$got" = "$want" ] || { echo "  checksum mismatch for $url: expected $want, got $got" >&2; rm -f "$dst.part"; exit 1; }
@@ -94,11 +95,11 @@ extract() {
 
 echo "bundle $PLATFORM ($LIBDIR) from $TSV"
 : > "$LIBS/natives.sha256"; : > "$LIBS/natives.deps"
-NOTICES="$DEST/THIRD-PARTY-NOTICES.md"
+NOTICES="$LIBS/THIRD-PARTY-NOTICES.md"
 {
   echo "# Third-party native libraries: $PLATFORM"
   echo
-  echo "Bundle rev $REV, built by tools/natives/bundle.sh from natives/$PLATFORM.tsv. Each file is an unmodified upstream build (renamed to its load-time name where noted)."
+  echo "Bundle rev $REV, built by tools/natives/bundle.sh from natives/$PLATFORM.tsv. Each file is an unmodified upstream build (renamed to its load-time name where noted); 'owner build' rows are the maintainer's own builds kept in the tracked tree."
   echo
   echo "| file | version | license | upstream |"
   echo "|---|---|---|---|"
@@ -106,24 +107,31 @@ NOTICES="$DEST/THIRD-PARTY-NOTICES.md"
 while IFS=$'\t' read -r file sha256 size url url_sha256 member version license deps; do
   case "$file" in ''|'#'*) continue;; esac
   echo "- $file ($version)"
-  asset="$(fetch "$url" "$url_sha256")"
-  if [ -z "${member:-}" ] || [ "$member" = "-" ]; then cp "$asset" "$LIBS/$file"; else extract "$asset" "$member" "$LIBS/$file"; fi
+  if [ "$url" = "-" ]; then
+    [ -f "$TREE/$file" ] || { echo "  owner-built $file is missing from $TREE" >&2; exit 1; }
+    cp "$TREE/$file" "$LIBS/$file"; origin="owner build (tracked tree)"
+  else
+    asset="$(fetch "$url" "$url_sha256")"
+    if [ -z "${member:-}" ] || [ "$member" = "-" ]; then cp "$asset" "$LIBS/$file"; else extract "$asset" "$member" "$LIBS/$file"; fi
+    origin="$url (\`$member\`)"
+  fi
   got="$(sha "$LIBS/$file")"
   [ "$got" = "$sha256" ] || { echo "  checksum mismatch for $file: expected $sha256, got $got" >&2; exit 1; }
   [ "$(stat -c %s "$LIBS/$file")" = "$size" ] || { echo "  size mismatch for $file" >&2; exit 1; }
   echo "$sha256  $file" >> "$LIBS/natives.sha256"
   [ -n "${deps:-}" ] && echo "$file: $deps" >> "$LIBS/natives.deps"
-  echo "| \`$file\` | $version | $license | $url (\`$member\`) |" >> "$NOTICES"
+  echo "| \`$file\` | $version | $license | $origin |" >> "$NOTICES"
 done < "$TSV"
 [ -s "$LIBS/natives.deps" ] || rm -f "$LIBS/natives.deps"
-cp "$NOTICES" "$LIBS/../../../THIRD-PARTY-NOTICES.md" 2>/dev/null || true
 BUNDLE_ID="$(sha "$LIBS/natives.sha256" | cut -c1-12)"
-echo "bundle id $BUNDLE_ID, $(wc -l < "$LIBS/natives.sha256") files in $LIBS"
+
+rm -rf "$TREE"; mkdir -p "$TREE"; cp "$LIBS"/* "$TREE"/
+echo "bundle id $BUNDLE_ID, $(wc -l < "$LIBS/natives.sha256") files in $TREE"
 
 if [ "$ZIP" = 1 ]; then
-  find "$DEST" -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
+  find "$WORK/libs" -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
   ZIPFILE="$OUT/xview-natives-$PLATFORM-$REV.zip"; rm -f "$ZIPFILE"
-  (cd "$DEST" && "$SEVENZ" a -tzip -mx=9 -mtc=off -r "$ZIPFILE" libs THIRD-PARTY-NOTICES.md >/dev/null)
+  (cd "$WORK" && "$SEVENZ" a -tzip -mx=9 -mtc=off -r "$ZIPFILE" libs >/dev/null)
   sha "$ZIPFILE" > "$ZIPFILE.sha256"
   echo "wrote $ZIPFILE ($(stat -c %s "$ZIPFILE") bytes, sha256 $(cat "$ZIPFILE.sha256"))"
 fi

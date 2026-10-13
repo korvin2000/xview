@@ -19,19 +19,50 @@
 			<resource>
 				<directory>src/main/resources</directory>
 			</resource>
-			<!-- the natives bundle manifest travels inside the jar: the loader's expected set and trust anchor (docs/NATIVES.md §4) -->
-			<resource>
-				<directory>${xview.natives.dir}/libs/${xview.libdir}</directory>
-				<targetPath>libs/${xview.libdir}</targetPath>
-				<includes>
-					<include>natives.sha256</include>
-					<include>natives.deps</include>
-				</includes>
-			</resource>
 		</resources>
 		<plugins>
-			<!-- natives bundle of the active platform (docs/NATIVES.md §3): verified download, unpacked into target/natives/<sha256> (a new bundle never mixes with an old one);
-			     skipped when xview.natives.skip=true or a local tree is given with -Dxview.natives.dir -->
+			<!-- natives of the active platform (docs/NATIVES.md §3), decided at initialize: the tracked tree natives/<os>/<arch>/ when it has
+			     natives.sha256, else -Dxview.natives.dir=<dir containing libs/>, else the verified bundle download below (unpacked into
+			     target/natives/<sha256>, so a new bundle never mixes with an old one). xview.natives.libs = the libs/<os>/<arch> directory used;
+			     its natives.sha256 + natives.deps travel inside the jar as the loader's expected set and trust anchor (docs/NATIVES.md §4). -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-antrun-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>natives-source</id>
+						<phase>initialize</phase>
+						<goals><goal>run</goal></goals>
+						<configuration>
+							<exportAntProperties>true</exportAntProperties>
+							<target>
+								<condition property="xview.natives.libs" value="${xview.natives.dir}/libs/${xview.libdir}">
+									<isset property="xview.natives.dir"/>
+								</condition>
+								<condition property="xview.natives.libs" value="${xview.natives.tree}" else="${xview.natives.dl}/libs/${xview.libdir}">
+									<available file="${xview.natives.tree}/natives.sha256"/>
+								</condition>
+								<condition property="xview.natives.download.skip" value="true" else="${xview.natives.skip}">
+									<or><isset property="xview.natives.dir"/><available file="${xview.natives.tree}/natives.sha256"/></or>
+								</condition>
+								<echo level="info">natives: ${xview.natives.libs} (download skipped: ${xview.natives.download.skip})</echo>
+							</target>
+						</configuration>
+					</execution>
+					<execution>
+						<id>natives-manifest</id>
+						<phase>process-resources</phase>
+						<goals><goal>run</goal></goals>
+						<configuration>
+							<target>
+								<copy todir="${project.build.outputDirectory}/libs/${xview.libdir}" failonerror="false" quiet="true">
+									<fileset dir="${xview.natives.libs}" includes="natives.sha256,natives.deps" erroronmissingdir="false"/>
+								</copy>
+							</target>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>com.googlecode.maven-download-plugin</groupId>
 				<artifactId>download-maven-plugin</artifactId>
@@ -43,12 +74,12 @@
 							<goal>wget</goal>
 						</goals>
 						<configuration>
-							<skip>${xview.natives.skip}</skip>
+							<skip>${xview.natives.download.skip}</skip>
 							<url>${xview.natives.url}</url>
 							<sha256>${xview.natives.sha256}</sha256>
 							<checkSignature>true</checkSignature>
 							<unpack>true</unpack>
-							<outputDirectory>${xview.natives.dir}</outputDirectory>
+							<outputDirectory>${xview.natives.dl}</outputDirectory>
 						</configuration>
 					</execution>
 				</executions>

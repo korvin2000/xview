@@ -8,9 +8,12 @@ import java.io.InputStream;
 
 import javax.imageio.ImageIO;
 
+import dev.matrixlab.webp4j.WebPCodec;
+
 import net.j7.commons.streams.Streams;
 import net.j7.commons.strings.Args;
 
+import org.delafer.xanderView.codec.TurboJpeg;
 import org.delafer.xanderView.common.ImageSize;
 import org.delafer.xanderView.file.CommonContainer;
 import org.delafer.xanderView.file.CopyService;
@@ -19,17 +22,12 @@ import org.delafer.xanderView.file.entry.ImageAbstract;
 import org.delafer.xanderView.file.entry.ImageAimDec;
 import org.delafer.xanderView.file.entry.ImageDec;
 import org.delafer.xanderView.gui.config.OrientationStore;
-import org.libjpegturbo.turbojpeg.TJ;
-import org.libjpegturbo.turbojpeg.TJDecompressor;
-import org.libjpegturbo.turbojpeg.TJScalingFactor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class ImageLoader {
 
 	private static final Logger log = LoggerFactory.getLogger(ImageLoader.class);
-
-	public static final int ON = 1;
 
 	public abstract Dimension getSize();
 	public OrientationStore orientator = OrientationStore.instance();
@@ -66,9 +64,11 @@ public abstract class ImageLoader {
 				imgcnt++;
 				img = loadCommonImage(entry.content().getArray(true));
 				break;
+			case WEBP:
+				img = WebPCodec.decodeImage(entry.content().getArray(true)); // webp4j JNI (native 'webp4j'); no ImageIO reader exists
+				break;
 			case BMP:
 			case PNG:
-			case WEBP:
 			case JXL:
 			default:
 				img = loadCommonImage(entry.content().getArray(true));
@@ -128,34 +128,13 @@ public abstract class ImageLoader {
 
 
 	protected BufferedImage loadJpegImage(byte[] bytes) throws Exception {
-		TJDecompressor tjd = null;
-			try {
-				tjd = new TJDecompressor(bytes);
-				ImageSize size = new ImageSize(tjd.getWidth(), tjd.getHeight());
-				int denom = getDenom(size);
-				if (1 != denom) {
-					TJScalingFactor sf =  new TJScalingFactor(1, denom);
-					tjd.setScalingFactor(sf);
-				}
-
-				//tjd.set(TJ.PARAM_STOPONWARNING, 0); //default
-				if (bytes.length >= 1750000) {
-					tjd.set(TJ.PARAM_FASTDCT, ON);
-					tjd.set(TJ.PARAM_FASTUPSAMPLE, ON);
-				} else {
-					//tjd.set(TJ.PARAM_FASTDCT, 0); //default
-					//tjd.set(TJ.PARAM_FASTUPSAMPLE, 0); //default
-				}
-				BufferedImage img = tjd.decompress8(BufferedImage.TYPE_3BYTE_BGR); //prev.value TYPE_INT_RGB
-				return img;
-			} catch (Exception | LinkageError e) {
-				// LinkageError: turbojpeg native missing or incompatible (UnsatisfiedLinkError, NoClassDefFoundError); ImageIO still decodes JPEG (PLAN B18)
-				return loadCommonImage(bytes);
-			} finally {
-				if (null != tjd) tjd.close();
-			}
-
-
+		try {
+			// TurboJPEG over FFM: DCT-scaled decode straight into the image's byte[]; the fast DCT only pays off for large files
+			return TurboJpeg.decode(bytes, (w, h) -> getDenom(new ImageSize(w, h)), bytes.length >= 1750000);
+		} catch (Exception | LinkageError e) {
+			// LinkageError: turbojpeg native missing or incompatible (UnsatisfiedLinkError, NoClassDefFoundError); ImageIO still decodes JPEG (PLAN B18)
+			return loadCommonImage(bytes);
+		}
 	}
 
 }

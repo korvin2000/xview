@@ -36,10 +36,16 @@ xanderView/lib/
 **/**/dummy.md
 thirddep-j7/src/test/resources/libs/
 
-# native libraries live outside git (docs/DEPENDENCIES.md §4)
+# stray native libraries (the shipped ones are tracked in natives/<os>/<arch>/, docs/NATIVES.md §3)
 *.dll
 *.so
+*.so.*
 *.dylib
 *.jnilib
 *.lib
+!natives/*/*/*.dll
+!natives/*/*/*.so
+!natives/*/*/*.so.*
+!natives/*/*/*.dylib
+!natives/*/*/*.jnilib
 devtools/

@@ -5,6 +5,7 @@ import net.sf.sevenzipjbinding.impl.OutArchiveBZip2Impl;
 import net.sf.sevenzipjbinding.impl.OutArchiveGZipImpl;
 import net.sf.sevenzipjbinding.impl.OutArchiveImpl;
 import net.sf.sevenzipjbinding.impl.OutArchiveTarImpl;
+import net.sf.sevenzipjbinding.impl.OutArchiveXzImpl;
 import net.sf.sevenzipjbinding.impl.OutArchiveZipImpl;
 
 /**
@@ -85,9 +86,9 @@ import net.sf.sevenzipjbinding.impl.OutArchiveZipImpl;
  * </tr>
  * <tr align="center">
  * <td>Hfs</td>
+ * <td>X</td>
  * <td>-</td>
- * <td>-</td>
- * <td>-</td>
+ * <td>{@link #HFS}</td>
  * </tr>
  * <tr align="center">
  * <td>Iso</td>
@@ -151,9 +152,9 @@ import net.sf.sevenzipjbinding.impl.OutArchiveZipImpl;
  * </tr>
  * <tr align="center">
  * <td>Split</td>
+ * <td>X</td>
  * <td>-</td>
- * <td>-</td>
- * <td>-</td>
+ * <td>{@link #SPLIT}</td>
  * </tr>
  * <tr align="center">
  * <td>Tar</td>
@@ -180,6 +181,12 @@ import net.sf.sevenzipjbinding.impl.OutArchiveZipImpl;
  * <td>{@link #XAR}</td>
  * </tr>
  * <tr align="center">
+ * <td>XZ</td>
+ * <td>X</td>
+ * <td>X</td>
+ * <td>{@link #XZ}</td>
+ * </tr>
+ * <tr align="center">
  * <td>Z</td>
  * <td>X</td>
  * <td>-</td>
@@ -191,10 +198,22 @@ import net.sf.sevenzipjbinding.impl.OutArchiveZipImpl;
  * <td>X</td>
  * <td>{@link #ZIP}</td>
  * </tr>
+ * <tr align="center">
+ * <td>Fat</td>
+ * <td>X</td>
+ * <td>-</td>
+ * <td>{@link #FAT}</td>
+ * </tr>
+ * <tr align="center">
+ * <td>Ntfs</td>
+ * <td>X</td>
+ * <td>-</td>
+ * <td>{@link #NTFS}</td>
+ * </tr>
  * </table>
  *
  * @author Boris Brodski
- * @since 1.0
+ * @since 4.65-1
  */
 public enum ArchiveFormat {
     /**
@@ -208,7 +227,7 @@ public enum ArchiveFormat {
     TAR("Tar", OutArchiveTarImpl.class, true),
 
     /**
-     * Split format. TODO Test it
+     * Split format.
      */
     SPLIT("Split", true),
 
@@ -233,12 +252,12 @@ public enum ArchiveFormat {
     ISO("Iso", true),
 
     /**
-     * Hfs format
+     * Hfs format.
      */
     HFS("HFS", true),
 
     /**
-     * Gzip format
+     * Gzip format.
      */
     GZIP("GZip", OutArchiveGZipImpl.class, false),
 
@@ -263,7 +282,13 @@ public enum ArchiveFormat {
     Z("Z", false),
 
     /**
-     * Arj format
+     * Xz format. Single-file stream archive (like GZip/BZip2/Lzma). Supports extraction and
+     * compression; stores no filename inside the archive.
+     */
+    XZ("Xz", OutArchiveXzImpl.class, false),
+
+    /**
+     * Arj format.
      */
     ARJ("Arj", true), //
 
@@ -273,17 +298,17 @@ public enum ArchiveFormat {
     CAB("Cab", true),
 
     /**
-     * Lzh
+     * Lzh format.
      */
     LZH("Lzh", true),
 
     /**
-     * Chm
+     * Chm format.
      */
     CHM("Chm", true),
 
     /**
-     * Nsis
+     * Nsis format.
      */
     NSIS("Nsis", true),
 
@@ -293,22 +318,22 @@ public enum ArchiveFormat {
     AR("Ar", true),
 
     /**
-     * Rpm
+     * Rpm format.
      */
     RPM("Rpm", true),
 
     /**
-     * Udf
+     * Udf format.
      */
     UDF("Udf", true),
 
     /**
-     * Wim
+     * Wim format.
      */
     WIM("Wim", true),
 
     /**
-     * Xar
+     * Xar format.
      */
     XAR("Xar", true),
 

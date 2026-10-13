@@ -12,9 +12,10 @@
 ## 2. Sources and formats — `interfaces/IImageEntry.types`, `file/readers/*`
 | Extension | Type | Decoder / handling |
 |---|---|---|
-| jpg jpeg jpe jfif jif jfi | JPEG | TurboJPEG, falling back to ImageIO on an `Exception`. A missing or incompatible `turbojpeg` DLL throws `UnsatisfiedLinkError` (a `LinkageError`), which is **not** caught. Downscaled 1/2, 1/4 or 1/8 in the DCT when the image ≥ 2× the screen. Fast DCT and upsampling for files ≥ 1.75 MB. |
+| jpg jpeg jpe jfif jif jfi | JPEG | TurboJPEG (`libturbojpeg` 3.x through the FFM API, `codec/TurboJpeg`), falling back to ImageIO on an `Exception` or a `LinkageError` (missing or incompatible `turbojpeg` native). Downscaled 1/2, 1/4 or 1/8 in the DCT when the image ≥ 2× the screen. Fast DCT and upsampling for files ≥ 1.75 MB. |
 | bmp rle dib, png | BMP, PNG | ImageIO |
-| webp, avif, jxl | WEBP, AVIF, JXL | ImageIO through thirddep SPIs (needs DLLs) |
+| webp | WEBP | webp4j decoder (JNI `webp4j`, packed-int image); no ImageIO fallback, a missing native skips the image |
+| avif, jxl | AVIF, JXL | ImageIO through thirddep SPIs (needs natives) |
 | aim | AIM | A container. The first embedded image is extracted (`file/entry/ImageAimDec`). |
 | cry | ENCRYPTED | Decrypted on read (§6). Listed only if the key file exists. |
 | xav | XAV | A "virtual directory" (`HelperFS.isVirtualDirectory`) |
@@ -107,7 +108,7 @@ Other keys are logged at debug level (`unbound key code: <n>`; enable with `-Dor
   - Implemented: Windows 10 (build 14393+, required by stock SWT 3.135's `swt-osversion` check) x64; Linux/macOS dist zips exist but are unverified.
   - Required targets: Linux and macOS x86_64; optional: aarch64 on all three. Their jars build (`-Dswt.flavor`, SWT 3.135 gtk/cocoa), but the natives don't exist yet (PLAN P5.3).
 - **Runtime:** JDK/JRE 26+. The deployed install still bundles Liberica JRE 23, which cannot run jars built since the JDK 26 migration (PLAN P6). `java -jar` needs no flags: the manifest has `Enable-Native-Access: ALL-UNNAMED` (the former `Add-Exports: java.desktop/sun.awt.windows` went with the vendored SWT 4.527 in P7).desktop/sun.awt.windows` (SWT_AWT) and `Enable-Native-Access: ALL-UNNAMED`. A classpath/IDE launch without `--add-exports=java.desktop/sun.awt.windows=ALL-UNNAMED` restarts itself once with it. On macOS the app restarts itself once with `-XstartOnFirstThread`, and on Linux under Wayland with `GDK_BACKEND=x11` (`-Dxview.relaunch=false` disables this).
-- **Natives:** 8 custom DLLs on Windows: `swt`, `lib7-Zip-JBinding`, `libgcc_s_seh-1`, `turbojpeg`, `webp-imageio`, `libavif` (JNA), `libjxl_jni`, `opencv_java460`.
+- **Natives:** on Windows x64: `swt-*` (4 stock SWT DLLs), `lib7-Zip-JBinding`, `turbojpeg`, `webp4j`, `libavif` (JNA), `libjxl_jni`, `opencv_java460`; the same set per platform in `natives/<os>/<arch>/` ([NATIVES.md](docs/NATIVES.md)).
   - They are copied on first use from `<location>/libs/<os>/<arch>/` (default: `libs/` next to the jar, else inside the jar; override `-Dxview.libs.location` / env `XVIEW_LIBS_LOCATION`) into the persistent cache `%APPDATA%\xanderView\libs\<os>\<arch>\…` (§7). `java -jar xanderview.jar --check-natives` loads every native of the shipped manifest headless and exits 1 if one fails ([docs/NATIVES.md](docs/NATIVES.md)).
   - Missing libraries fail softly: the feature breaks with `UnsatisfiedLinkError`. See [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md#natives).
 - **Logging:** SLF4J with `slf4j-simple` to stderr at level `info` (config `simplelogger.properties`; override with `-Dorg.slf4j.simpleLogger.*`). Vendored libraries may still print directly.

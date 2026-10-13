@@ -11,13 +11,13 @@ import net.sf.sevenzipjbinding.SevenZipException;
  * Implementation of {@link IOutStream} using {@link RandomAccessFile}.
  * 
  * @author Boris Brodski
- * @since 4.65-1
+ * @since 9.20-2.00
  */
 public class RandomAccessFileOutStream implements IOutStream, Closeable {
     private final RandomAccessFile randomAccessFile;
 
     /**
-     * Constructs instance of the class from random access file.
+     * Constructs an instance from the given random access file.
      * 
      * @param randomAccessFile
      *            random access file to use

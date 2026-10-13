@@ -1,14 +1,14 @@
 # Build and run
 
 ## Why it is hard to build
-- **Native libraries:** not in git. Since PLAN P7 they come as hash-pinned per-platform bundles (`natives/<platform>.tsv`, `tools/natives/bundle.sh`, GitHub release `natives-2026.10`) that the build downloads and verifies; a local bundle can be used with `-Dxview.natives.dir=<natives/target/<platform>>`. See [NATIVES.md](NATIVES.md), [DEPENDENCIES §0, §4](DEPENDENCIES.md).
+- **Native libraries:** tracked in `natives/<os>/<arch>/` (since 2026-10-13), rebuilt from the hash-pinned manifests `natives/<platform>.tsv` by `tools/natives/bundle.sh`; the build takes the tracked tree and falls back to downloading the bundle zip of the GitHub release `natives-<rev>` when the tree is absent. See [NATIVES.md](NATIVES.md), [DEPENDENCIES §0, §4](DEPENDENCIES.md).
 - **jitpack-only vavi artifacts** and outdated libraries.
 - The small classes-only OpenCV jar is no longer a blocker: it comes from the WPILib Maven repo (PLAN P1.4).
 
 ## Toolchain
 - **JDK 26+** to build and run (class files v70); every module compiles with `release=26` (migrated from 21 in PLAN P6). The deployed install still bundles **BellSoft Liberica JRE 23** (`C:\Program Files\xview\jre`), which cannot run a new jar: replace it with a 26 runtime before deploying one.
 - **Maven:** use the wrapper (`./mvnw`, `mvnw.cmd`). It downloads Maven 3.9.16 once (SHA-256 checked) into `~/.m2/wrapper`. On Unix the wrapper needs `unzip` (otherwise it fetches the `.tar.gz`, which fails the zip checksum). The enforcer rejects JDK < 26 and Maven < 3.9. On the owner's machine IntelliJ also bundles Maven 3.9.16 at `C:\Program Files\JetBrains\IntelliJ IDEA 2023.1\plugins\maven-plugin\lib\maven3\bin\mvn`; JDK 26: `devtools/jdk-26.0.2.1+1` in the repo (untracked; set `JAVA_HOME` to it). IntelliJ 2023.1 predates language level 26; the build itself does not depend on the IDE.
-- Platforms: **Windows x64** runs today. Linux and macOS dist zips build with their natives (see SWT flavors and natives below) but are unverified at runtime (PLAN P7.5); Windows aarch64 is deferred (P7.7).
+- Platforms: **Windows x64** runs today. Linux, macOS and Windows arm64 dist zips build with their natives (see SWT flavors and natives below) but are unverified at runtime (PLAN P7.5); the Windows arm64 bundle is incomplete (P7.7).
 
 ## Build (verified 2026-10-12: BUILD SUCCESS)
 ```bash
@@ -30,6 +30,7 @@ The parent pom has one `swt-*` profile per platform. It is selected from the bui
 | `-Dswt.flavor=` | SWT Java code | Output dir |
 |---|---|---|
 | `win32.win32.x86_64` (auto on Windows x64) | stock SWT 3.135.0 classes + patched `Library` (`thirddep-j7/src/swt-stock/`), since P7 | `target/` |
+| `win32.win32.aarch64` (auto on Windows arm64) | same; natives complete since 2026-10-13 (PLAN P7.7) | `target-<flavor>/` |
 | `gtk.linux.x86_64`, `gtk.linux.aarch64` | same | `target-<flavor>/` |
 | `cocoa.macosx.x86_64`, `cocoa.macosx.aarch64` | same | `target-<flavor>/` |
 
@@ -43,25 +44,25 @@ The parent pom has one `swt-*` profile per platform. It is selected from the bui
 - Cross-building on Windows was verified for `gtk.linux.x86_64` and `cocoa.macosx.aarch64`: the app compiles against SWT 3.135 and the jars contain no SWT natives.
 
 ### Natives bundles and dist zips (PLAN P7)
-Each `swt-*` profile also sets `xview.platform` (`windows-x86_64`, `linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`), `xview.libdir` (`windows/amd64`, `linux/x86_64`, …) and the bundle hash `xview.natives.sha256`. In `generate-resources` the app module downloads `xview-natives-<platform>-<rev>.zip` from the GitHub release `natives-${xview.natives.rev}` (`download-maven-plugin`, SHA-256 verified, cached in `~/.m2`) into `target/natives/`, packs `libs/<os>/<arch>/natives.sha256` + `natives.deps` into the jar as resources, and after shading builds **`xanderview-<version>-<platform>.zip`** (`maven-assembly-plugin`, `src/assembly/dist.xml`): `xanderview.jar`, `libs/<os>/<arch>/…`, `xanderview.cmd` or `xanderview.sh`, a filtered `jrunner.json`, `THIRD-PARTY-NOTICES.md`.
-- The default build downloads the bundle (release `natives-2026.10` is published) and builds the dist zip. `-Dxview.natives.skip=true` builds without natives as before P7 (jar without a manifest, legacy loader mode, no dist zip); the download is cached in `~/.m2/repository/.cache/download-maven-plugin`, so later builds are offline.
-- Local bundle instead of the download (profile `natives-local`): `-Dxview.natives.dir=<absolute path to natives/target/<platform>>` (the directory that contains `libs/`). Build the bundle first:
+Each `swt-*` profile also sets `xview.platform` (`windows-x86_64`, `windows-aarch64`, `linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`), `xview.libdir` (`windows/amd64`, `linux/x86_64`, …) and the bundle hash `xview.natives.sha256`. At `initialize` the app module (antrun) picks the natives directory `xview.natives.libs`: the tracked tree `natives/<os>/<arch>/` when it holds `natives.sha256`, else `-Dxview.natives.dir=<dir containing libs/>`, else `target/natives/<sha256>/libs/<os>/<arch>/` filled in `generate-resources` by downloading `xview-natives-<platform>-<rev>.zip` from the GitHub release `natives-${xview.natives.rev}` (`download-maven-plugin`, SHA-256 verified, cached in `~/.m2`). `process-resources` packs that directory's `natives.sha256` + `natives.deps` into the jar, and after shading **`xanderview-<version>-<platform>.zip`** is built (`maven-assembly-plugin`, `src/assembly/dist.xml`): `xanderview.jar`, `libs/<os>/<arch>/…`, `xanderview.cmd` or `xanderview.sh`, a filtered `jrunner.json`, `THIRD-PARTY-NOTICES.md`.
+- The default build uses the tracked tree (no download; the Maven log says `natives: …/natives/windows/amd64 (download skipped: true)`). Without the tree (e.g. a sparse checkout) it downloads the bundle (release `natives-${xview.natives.rev}`); the download is cached in `~/.m2/repository/.cache/download-maven-plugin`. `-Dxview.natives.skip=true` builds without natives as before P7 (jar without a manifest, legacy loader mode, no dist zip).
+- Another tree instead of the tracked one: `-Dxview.natives.dir=<absolute dir that contains libs/<os>/<arch>/>` (e.g. an unpacked bundle zip). Rebuilding the tracked tree and its zip from the manifests:
 ```bash
-tools/natives/bundle.sh windows-x86_64 --rev 2026.10
+tools/natives/bundle.sh windows-x86_64 --rev 2026.10.1
 ```
 ```bash
-./mvnw -B -DskipTests -Dxview.natives.dir="$PWD/natives/target/windows-x86_64" package
+./mvnw -B -DskipTests package
 ```
 ```bash
-./mvnw -B -DskipTests -Dswt.flavor=gtk.linux.x86_64 -Dxview.natives.dir="$PWD/natives/target/linux-x86_64" package
+./mvnw -B -DskipTests -Dswt.flavor=gtk.linux.x86_64 package
 ```
-- Verified 2026-10-13 on Windows: both commands succeed; the zips contain the natives, the manifests and the launcher (`xanderView/target/xanderview-1.0.0-windows-x86_64.zip`, `xanderView/target-gtk.linux.x86_64/xanderview-1.0.0-linux-x86_64.zip`).
+- Verified 2026-10-13 on Windows: the tree build, the download fallback (tree hidden) and the cross-build succeed; the zips contain the natives, the manifests and the launcher; the unpacked Windows dist passes `--check-natives` and decodes JPEG (FFM), WebP (webp4j) and extracts zip/7z (7-Zip 26.03).
 - Check a dist: unzip it and run `java -jar xanderview.jar --check-natives` (loads every native of the manifest from a cold per-user cache, exit 1 on a problem). CI does this per platform (`.github/workflows/build.yml`); the bundler runs in `natives-bundle.yml`.
-- `tools/natives/check-binaries.sh natives/target/<platform>` (needs LLVM tools) lists imports, glibc floor, macOS minos and JNI export counts.
+- `tools/natives/check-binaries.sh natives/<os>/<arch>` (needs LLVM tools) lists imports, glibc floor, macOS minos and JNI export counts.
 
 Jar acceptance checks after a build:
 - **Manifest:** `Main-Class`, `SWT-OS/WS/Arch` of the flavor, `Enable-Native-Access: ALL-UNNAMED` (no `Add-Exports` since P7).
-- **`META-INF/services`:** `ImageReaderSpi` lists AVIF, WebP and JXL-JNI; `ImageWriterSpi` lists AVIF and WebP.
+- **`META-INF/services`:** `ImageReaderSpi` lists AVIF and JXL-JNI; `ImageWriterSpi` lists AVIF (WebP goes through webp4j directly, no SPI).
 - **Entries present:** `vavi/imageio/WrappedImageInputStream.class`, `org/eclipse/swt/internal/Library.class` (the patched one: `javap -c` shows `LibraryLoader` calls), `libs.properties`; Windows also `org/eclipse/swt/internal/SWTMessages*.properties`; with a natives bundle also `libs/<os>/<arch>/natives.sha256`.
 - **No SWT or JXL natives** (`*.dll`, `*.so`, `*.jnilib`, `*.dylib` outside `com/sun/jna/` and lz4's own dirs, which are the documented exceptions in [DEPENDENCIES §4](DEPENDENCIES.md#natives)).
 

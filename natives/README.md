@@ -11,9 +11,9 @@ the Maven build downloads only when the tree is absent.
 |---|---|---|
 | `windows/amd64/` | `windows-x86_64.tsv` | Windows x64 (AVX2 builds: Haswell / Zen 1 or newer) |
 | `windows/aarch64/` | `windows-aarch64.tsv` | Windows 10+ arm64 |
-| `linux/x86_64/` | `linux-x86_64.tsv` | Linux x64, glibc ≥ 2.35 (AVX2 builds of 7-Zip) |
+| `linux/x86_64/` | `linux-x86_64.tsv` | Linux x64, glibc ≥ 2.35 (AVX2 builds) |
 | `linux/aarch64/` | `linux-aarch64.tsv` | Linux arm64, glibc ≥ 2.35 |
-| `macos/x86_64/` | `macos-x86_64.tsv` | macOS 10.15+ Intel |
+| `macos/x86_64/` | `macos-x86_64.tsv` | macOS 11+ Intel (AVX2 builds) |
 | `macos/aarch64/` | `macos-aarch64.tsv` | macOS 11+ Apple Silicon |
 | `research/` | | everything found during the P7 research: `SOURCES.md` (all sources, alternatives, gaps), `hashes-2026-10.txt`, the reviewed plan |
 | `target/` (gitignored) | | bundler output: `xview-natives-<platform>-<rev>.zip` + `.sha256` |
@@ -27,7 +27,7 @@ TSV columns (tab separated, `#` comments): `file  sha256  size  url  url_sha256 
 
 ## Commands
 ```bash
-tools/natives/bundle.sh windows-x86_64 --rev 2026.10.1        # rewrites natives/windows/amd64/ + natives/target/…zip
+tools/natives/bundle.sh windows-x86_64 --rev 2026.10.2        # rewrites natives/windows/amd64/ + natives/target/…zip
 ```
 ```bash
 tools/natives/check-binaries.sh natives/linux/x86_64            # llvm-based import/export checks (CI)

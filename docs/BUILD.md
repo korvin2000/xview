@@ -48,7 +48,7 @@ Each `swt-*` profile also sets `xview.platform` (`windows-x86_64`, `windows-aarc
 - The default build uses the tracked tree (no download; the Maven log says `natives: …/natives/windows/amd64 (download skipped: true)`). Without the tree (e.g. a sparse checkout) it downloads the bundle (release `natives-${xview.natives.rev}`); the download is cached in `~/.m2/repository/.cache/download-maven-plugin`. `-Dxview.natives.skip=true` builds without natives as before P7 (jar without a manifest, legacy loader mode, no dist zip).
 - Another tree instead of the tracked one: `-Dxview.natives.dir=<absolute dir that contains libs/<os>/<arch>/>` (e.g. an unpacked bundle zip). Rebuilding the tracked tree and its zip from the manifests:
 ```bash
-tools/natives/bundle.sh windows-x86_64 --rev 2026.10.1
+tools/natives/bundle.sh windows-x86_64 --rev 2026.10.2
 ```
 ```bash
 ./mvnw -B -DskipTests package

@@ -1,6 +1,6 @@
 # Third-party native libraries: windows-aarch64
 
-Bundle rev 2026.10.1, built by tools/natives/bundle.sh from natives/windows-aarch64.tsv. Each file is an unmodified upstream build (renamed to its load-time name where noted); 'owner build' rows are the maintainer's own builds kept in the tracked tree.
+Bundle rev 2026.10.2, built by tools/natives/bundle.sh from natives/windows-aarch64.tsv. Each file is an unmodified upstream build (renamed to its load-time name where noted); 'owner build' rows are the maintainer's own builds kept in the tracked tree.
 
 | file | version | license | upstream |
 |---|---|---|---|
@@ -8,11 +8,11 @@ Bundle rev 2026.10.1, built by tools/natives/bundle.sh from natives/windows-aarc
 | `swt-osversion-win32-4974r10.dll` | 3.135.0 (4974r10) | EPL-2.0 | https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.swt.win32.win32.aarch64/3.135.0/org.eclipse.swt.win32.win32.aarch64-3.135.0.jar (`swt-osversion-win32-4974r10.dll`) |
 | `swt-awt-win32-4974r10.dll` | 3.135.0 (4974r10) | EPL-2.0 | https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.swt.win32.win32.aarch64/3.135.0/org.eclipse.swt.win32.win32.aarch64-3.135.0.jar (`swt-awt-win32-4974r10.dll`) |
 | `swt-gdip-win32-4974r10.dll` | 3.135.0 (4974r10) | EPL-2.0 | https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.swt.win32.win32.aarch64/3.135.0/org.eclipse.swt.win32.win32.aarch64-3.135.0.jar (`swt-gdip-win32-4974r10.dll`) |
-| `turbojpeg.dll` | 3.2.0 official | BSD-3-Clause+IJG+Zlib | https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0-vc-arm64.exe (`bin/turbojpeg.dll`) |
+| `turbojpeg.dll` | 3.2.1 (owner's fork korvin2000/libjpeg-turbo, release Release-3.2.1-ci2 Windows-arm64: Clang -O3 -ffast-math -flto + PGO (llvm-mingw), CTest passed) | BSD-3-Clause+IJG+Zlib | https://github.com/korvin2000/libjpeg-turbo/releases/download/Release-3.2.1-ci2/libjpeg-turbo-3.2.1-Windows-arm64.zip (`libjpeg-turbo-3.2.1-Windows-arm64/bin/libturbojpeg.dll`) |
 | `aom.dll` | SDL3_image 3.4.8 (libaom 3.6.1 / dav1d) | BSD-2-Clause+AOM-Patent | https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.8/SDL3_image-3.4.8-win32-arm64.zip (`optional/aom.dll`) |
 | `dav1d.dll` | SDL3_image 3.4.8 (libaom 3.6.1 / dav1d) | BSD-2-Clause | https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.8/SDL3_image-3.4.8-win32-arm64.zip (`optional/dav1d.dll`) |
 | `libavif.dll` | 1.1.1 (SDL3_image 3.4.8; dynamic aom + dav1d siblings) | BSD-2-Clause | https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.8/SDL3_image-3.4.8-win32-arm64.zip (`optional/libavif-16.dll`) |
 | `libjxl_jni.dll` | libjxl 0.12.0 jxl_jni (own CI build .github/workflows/natives-build.yml, release natives-jxl-0.12.0: static brotli+highway+skcms, OS libraries only) | BSD-3-Clause(libjxl)+MIT(brotli)+Apache-2.0(highway)+BSD-3-Clause(skcms) | https://github.com/korvin2000/xview/releases/download/natives-jxl-0.12.0/jxl_jni-windows-aarch64.dll (`-`) |
 | `opencv_java460.dll` | 4.6.0-5 (WPILib) | Apache-2.0 | https://frcmaven.wpi.edu/artifactory/release/edu/wpi/first/thirdparty/frc2023/opencv/opencv-jni/4.6.0-5/opencv-jni-4.6.0-5-windowsarm64.jar (`windows/arm64/opencv_java460.dll`) |
 | `lib7-Zip-JBinding.dll` | 26.03-2.3 (owner's fork korvin2000/sevenzipjbinding, CI release ci4: Windows-arm64, llvm-mingw aarch64) | LGPL-2.1-or-later+unRAR-restriction | https://github.com/korvin2000/sevenzipjbinding/releases/download/Release-26.03-2.3-ci4/sevenzipjbinding-26.03-2.3-Windows-arm64.zip (`sevenzipjbinding-26.03-2.3-Windows-arm64/lib/sevenzipjbinding-Windows-arm64.jar!Windows-arm64/lib7-Zip-JBinding.dll`) |
-| `webp4j.dll` | webp4j 2.5.0 JNI library on libwebp 1.6.0 (owner's fork korvin2000/libwebp, release Release-1.6.0-2.5.0-ci1: Clang 23.1.3 llvm-mingw, -O3 -ffast-math -flto) | MIT(webp4j)+BSD-3-Clause(libwebp) | https://github.com/korvin2000/libwebp/releases/download/Release-1.6.0-2.5.0-ci1/webp4j-windows-aarch64.dll (`-`) |
+| `webp4j.dll` | webp4j 2.5.0 JNI library on libwebp 1.6.0 (owner's fork korvin2000/libwebp, release Release-1.6.0-2.5.0-ci2 Windows ARM64: Clang -O3 -ffast-math -flto + PGO (llvm-mingw), JUnit passed) | MIT(webp4j)+BSD-3-Clause(libwebp) | https://github.com/korvin2000/libwebp/releases/download/Release-1.6.0-2.5.0-ci2/webp4j-windows-aarch64.dll (`-`) |
